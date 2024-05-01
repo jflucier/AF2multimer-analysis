@@ -662,7 +662,7 @@ def analyze_complexes(cpu_index:int, input_folder:str, output_folder:str, comple
         pae_filepaths = []
         if ignore_pae == False:
             #get pAE files ending in .json or .json followed by two letters as would be the case for compressed gzipped files
-            pae_filepaths = get_filepaths_for_complex(input_folder, cname, '*score*.json') + get_filepaths_for_complex(input_folder, cname, "*score*.json.??")
+            pae_filepaths = get_filepaths_for_complex(input_folder, cname, '*.json') + get_filepaths_for_complex(input_folder, cname, "*.json.??")
         
             if len(pdb_filepaths) != len(pae_filepaths):
                 print(f"ERROR: Number of PDB files ({len(pdb_filepaths)}) does not match number of PAE files ({len(pae_filepaths)})")
