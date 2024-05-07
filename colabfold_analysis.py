@@ -988,4 +988,4 @@ if __name__ == '__main__':
         for folder in output_folders:
             shutil.rmtree(folder)
 
-   print(f"Finished analyzing all specified folders")
+    print(f"Finished analyzing all specified folders")
