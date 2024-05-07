@@ -17,29 +17,30 @@ from collections import defaultdict
 
 #dict for converting 3 letter amino acid code to 1 letter code
 aa_3c_to_1c = {
-    "ALA":'A',
-    "CYS":'C',
-    "ASP":'D',
-    "GLU":'E',
-    "PHE":'F',
-    "GLY":'G',
-    "HIS":'H',
-    "ILE":'I',
-    "LYS":'K',
-    "LEU":'L',
-    "MET":'M',
-    "ASN":'N',
-    "PRO":'P',
-    "GLN":'Q',
-    "ARG":'R',
-    "SER":'S',
-    "THR":'T',
-    "VAL":'V',
-    "TRP":'W',
-    "TYR":'Y',
+    "ALA": 'A',
+    "CYS": 'C',
+    "ASP": 'D',
+    "GLU": 'E',
+    "PHE": 'F',
+    "GLY": 'G',
+    "HIS": 'H',
+    "ILE": 'I',
+    "LYS": 'K',
+    "LEU": 'L',
+    "MET": 'M',
+    "ASN": 'N',
+    "PRO": 'P',
+    "GLN": 'Q',
+    "ARG": 'R',
+    "SER": 'S',
+    "THR": 'T',
+    "VAL": 'V',
+    "TRP": 'W',
+    "TYR": 'Y',
 }
 
-def join_csv_files(files:list, output_name:str, sort_col:str = None, sort_ascending:bool = False, headers = None):
+
+def join_csv_files(files: list, output_name: str, sort_col: str = None, sort_ascending: bool = False, headers=None):
     """
         Join multiple CSV files into a single file.
 
@@ -49,7 +50,7 @@ def join_csv_files(files:list, output_name:str, sort_col:str = None, sort_ascend
         :param sort_ascending (bool, optional): The sort direction to use when sorting the final output CSV.
         :param headers (list, optional): A list of column names for the output file. If not provided, the column names from the first input file are used.
     """
-    if(len(files) < 1):
+    if (len(files) < 1):
         return
 
     all_dfs = []
@@ -66,24 +67,24 @@ def join_csv_files(files:list, output_name:str, sort_col:str = None, sort_ascend
     combo_df.to_csv(output_name, index=None)
 
 
-def distribute(lst:list, n_bins:int) -> list:
+def distribute(lst: list, n_bins: int) -> list:
     """
         Returns a list containg n_bins number of lists that contains the items passed in with the lst argument
 
         :param lst: list that contains that items to be distributed across n bins
         :param n_bins: number of bins/lists across which to distribute the items of lst
-    """ 
+    """
     if n_bins < 1:
-       raise ValueError('The number of bins must be greater than 0')
-    
+        raise ValueError('The number of bins must be greater than 0')
+
     #cannot have empty bins so max number of bin is always less than or equal to list length
     n_bins = min(n_bins, len(lst))
     distributed_lists = []
     for i in range(0, n_bins):
         distributed_lists.append([])
-    
+
     for i, item in enumerate(lst):
-        distributed_lists[i%n_bins].append(item)
+        distributed_lists[i % n_bins].append(item)
 
     return distributed_lists
 
@@ -93,15 +94,15 @@ def get_af_model_num(filename) -> int:
         Returns the Alphafold model number from an input filestring as an int
 
         :param filename: string representing the filename from which to extract the model number
-    """ 
-    
+    """
+
     if "model_" not in filename: return 0
 
     model_num = int(re.findall(r'model_\d+', filename)[0].replace("model_", ''))
     return model_num
 
 
-def get_finished_complexes(path:str, search_str:str = '.done.txt') -> list:
+def get_finished_complexes(path: str, search_str: str = '.done.txt') -> list:
     """
         Returns a list of string values representing the names of the complexes that were found in a specified path (folder)
 
@@ -109,12 +110,12 @@ def get_finished_complexes(path:str, search_str:str = '.done.txt') -> list:
         :param search_str: string representing the pattern to use when searching for the completed complexes. By default this is *.done.txt because Colabfold outputs 1 such file per complex.
     """
 
-    done_files = glob.glob(os.path.join(path,'*' + search_str))
+    done_files = glob.glob(os.path.join(path, '*' + search_str))
     complex_names = [os.path.basename(f).replace(search_str, '') for f in done_files]
     return complex_names
 
 
-def get_filepaths_for_complex(path:str, complex_name:str, pattern:str = '*') -> list:
+def get_filepaths_for_complex(path: str, complex_name: str, pattern: str = '*') -> list:
     """
         Helper methdof for returning a list of filepaths (strs) that match the specified GLOB pattern
 
@@ -132,18 +133,18 @@ def get_pae_values_from_json_file(json_filename) -> list:
         Returns a list of string values representing the pAE(predicated Aligned Error) values stored in the JSON output
 
         :param json_filename: string representing the JSON filename from which to extract the PAE values
-    """ 
+    """
 
     if not os.path.isfile(json_filename):
         raise ValueError('Non existing PAE file was specified')
 
-    scores_file = None 
-    if(json_filename.endswith('.xz')):
+    scores_file = None
+    if (json_filename.endswith('.xz')):
         scores_file = lzma.open(json_filename, 'rt')
-    elif(json_filename.endswith('.gz')):
-        scores_file = gzip.open(json_filename,'rt')
+    elif (json_filename.endswith('.gz')):
+        scores_file = gzip.open(json_filename, 'rt')
     elif (json_filename.endswith('.json')):
-        scores_file = open(json_filename,'rt')
+        scores_file = open(json_filename, 'rt')
     else:
         raise ValueError('pAE file with invalid extension cannot be analyzed. Only valid JSON files can be analyzed.')
 
@@ -151,15 +152,16 @@ def get_pae_values_from_json_file(json_filename) -> list:
     file_text = scores_file.read()
     pae_index = file_text.find('"pae":')
     scores_file.close()
-    
-    #Transform string representing 2d array into a 1d array of strings (each string is 1 pAE value). We save time by not unecessarily converting them to numbers before we use them.
-    pae_data = file_text[pae_index + 6:file_text.find(']]', pae_index) + 2].replace('[','').replace(']','').split(',')
 
-    if len(pae_data) != int(math.sqrt(len(pae_data)))**2:
+    #Transform string representing 2d array into a 1d array of strings (each string is 1 pAE value). We save time by not unecessarily converting them to numbers before we use them.
+    pae_data = file_text[pae_index + 6:file_text.find(']]', pae_index) + 2].replace('[', '').replace(']', '').split(',')
+
+    if len(pae_data) != int(math.sqrt(len(pae_data))) ** 2:
         #all valid pAE files consist of an N x N matrice of scores
         raise ValueError('pAE values could not be parsed from files')
-    
+
     return pae_data
+
 
 def dist2(v1, v2) -> float:
     """
@@ -167,26 +169,28 @@ def dist2(v1, v2) -> float:
 
         :param v1: a vector containing 3 numeric values represening X, Y, and Z coordinates
         :param v2: a vector containing 3 numeric values represening X, Y, and Z coordinates
-    """ 
+    """
 
     if len(v1) != 3:
         raise ValueError('3D coordinates require 3 values')
-    
+
     if len(v2) != 3:
         raise ValueError('3D coordinates require 3 values')
 
-    return (v1[0] - v2[0])**2 + (v1[1] - v2[1])**2 + (v1[2] - v2[2])**2
+    return (v1[0] - v2[0]) ** 2 + (v1[1] - v2[1]) ** 2 + (v1[2] - v2[2]) ** 2
 
-def atom_from_pdb_line(atom_line:str) -> dict:
+
+def atom_from_pdb_line(atom_line: str) -> dict:
     """
         Parses a single line string in the standard PDB format and returns a list a dict that represents an atom with 3d coordinates and a type(element)
 
         :param atom_line: string representing a single line entry in a PDB file which contains information about an atom in a protein structure
-    """ 
+    """
     coordinates = np.array([float(atom_line[30:38]), float(atom_line[38:46]), float(atom_line[46:54])])
-    return {"type":atom_line[13:16].strip(),"xyz":coordinates,}
+    return {"type": atom_line[13:16].strip(), "xyz": coordinates, }
 
-def get_closest_atoms(res1:dict, res2:dict):
+
+def get_closest_atoms(res1: dict, res2: dict):
     """
         Find the two closest atoms between two residues and returns the minimum distance as well as the closest atoms from each residue.
 
@@ -204,26 +208,27 @@ def get_closest_atoms(res1:dict, res2:dict):
                 atoms[1] = a2
     return (min_d2, atoms)
 
-def get_lines_from_pdb_file(pdb_filename:str) -> list:
+
+def get_lines_from_pdb_file(pdb_filename: str) -> list:
     """
         Returns the contents of a protein databank file (PDB) file as a list of strings
 
         :param pdb_filename: string representing the path of the PDB file to open and parse (can handle PDB files that have been compressed via GZIP or LZMA)
-    """ 
+    """
 
     if not os.path.isfile(pdb_filename):
         raise ValueError('Non existing PDB file was specified')
 
-    pdb_file = None 
-    if(pdb_filename.endswith('.xz')):
+    pdb_file = None
+    if (pdb_filename.endswith('.xz')):
         pdb_file = lzma.open(pdb_filename, 'rt')
-    elif(pdb_filename.endswith('.gz')):
-        pdb_file = gzip.open(pdb_filename,'rt')
-    elif(pdb_filename.endswith('.pdb')):
-        pdb_file = open(pdb_filename,'rt')
+    elif (pdb_filename.endswith('.gz')):
+        pdb_file = gzip.open(pdb_filename, 'rt')
+    elif (pdb_filename.endswith('.pdb')):
+        pdb_file = open(pdb_filename, 'rt')
     else:
         raise ValueError('Unable to parse a PDB file with invalid file extension')
-    
+
     pdb_data = pdb_file.read()
     pdb_file.close()
     return pdb_data.splitlines()
@@ -234,12 +239,12 @@ def get_lines_from_pdb_file(pdb_filename:str) -> list:
 #------------------------------------------------------------------------------------------------------------------------------------
 #FROM ELOFSSON BLOCK (https://gitlab.com/ElofssonLab/FoldDock/-/blob/9a1a26ced4f6b8b9bc65a7ac76999118c292b80d/src/pdockq.py)
 
-def parse_atm_record(line:str)->dict:
+def parse_atm_record(line: str) -> dict:
     """
         Returns a dict of values associated with an ATOM entry in a PDB file. A helper function defined for get_pdockq_elofsson
 
         :param line: A string representing a single line from an ATOM entry
-    """ 
+    """
     record = defaultdict()
     record['name'] = line[0:6].strip()
     record['atm_no'] = int(line[6:11])
@@ -259,14 +264,14 @@ def parse_atm_record(line:str)->dict:
     return record
 
 
-def get_pdockq_elofsson(pdb_filepath:str, chains:list=None) -> float:
+def get_pdockq_elofsson(pdb_filepath: str, chains: list = None) -> float:
     """
         Returns the pdockQ score as defined by https://www.nature.com/articles/s41467-022-28865-w
 
         :param pdb_filepath: string representing the path of the PDB file to open and parse (can handle PDB files that have been compressed via GZIP or LZMA)
         :param chain: an optional list of the chains to be used for calculating the pDOCKQ score
-    """ 
-    
+    """
+
     chain_coords, chain_plddt = {}, {}
     for line in get_lines_from_pdb_file(pdb_filepath):
         if line[0:4] != 'ATOM':
@@ -275,14 +280,13 @@ def get_pdockq_elofsson(pdb_filepath:str, chains:list=None) -> float:
         if chains and record['chain'] not in chains:
             continue
         #Get CB - CA for GLY
-        if record['atm_name']=='CB' or (record['atm_name']=='CA' and record['res_name']=='GLY'):
+        if record['atm_name'] == 'CB' or (record['atm_name'] == 'CA' and record['res_name'] == 'GLY'):
             if record['chain'] in [*chain_coords.keys()]:
-                chain_coords[record['chain']].append([record['x'],record['y'],record['z']])
+                chain_coords[record['chain']].append([record['x'], record['y'], record['z']])
                 chain_plddt[record['chain']].append(record['B'])
             else:
-                chain_coords[record['chain']] = [[record['x'],record['y'],record['z']]]
+                chain_coords[record['chain']] = [[record['x'], record['y'], record['z']]]
                 chain_plddt[record['chain']] = [record['B']]
-
 
     #Convert to arrays
     for chain in chain_coords:
@@ -295,23 +299,23 @@ def get_pdockq_elofsson(pdb_filepath:str, chains:list=None) -> float:
     plddt1, plddt2 = chain_plddt[ch1], chain_plddt[ch2]
 
     #Calc 2-norm
-    mat = np.append(coords1, coords2,axis=0)
-    a_min_b = mat[:,np.newaxis,:] -mat[np.newaxis,:,:]
+    mat = np.append(coords1, coords2, axis=0)
+    a_min_b = mat[:, np.newaxis, :] - mat[np.newaxis, :, :]
     dists = np.sqrt(np.sum(a_min_b.T ** 2, axis=0)).T
     l1 = len(coords1)
-    contact_dists = dists[:l1,l1:] #upper triangular --> first dim = chain 1
+    contact_dists = dists[:l1, l1:]  #upper triangular --> first dim = chain 1
     t = 8
-    contacts = np.argwhere(contact_dists<=t)
-    if contacts.shape[0]<1:
+    contacts = np.argwhere(contact_dists <= t)
+    if contacts.shape[0] < 1:
         return 0
 
-    avg_if_plddt = np.average(np.concatenate([plddt1[np.unique(contacts[:,0])], plddt2[np.unique(contacts[:,1])]]))
+    avg_if_plddt = np.average(np.concatenate([plddt1[np.unique(contacts[:, 0])], plddt2[np.unique(contacts[:, 1])]]))
     n_if_contacts = contacts.shape[0]
-    x = avg_if_plddt*np.log10(n_if_contacts)
+    x = avg_if_plddt * np.log10(n_if_contacts)
 
     #formula represents a sigmoid function that was empirically derived in the paper here: https://www.nature.com/articles/s41467-022-28865-w
     #even though pDOCKQ range is supposed to be from 0 to 1, this function maxes out at 0.742
-    return 0.724 / (1 + np.exp(-0.052*(x-152.611)))+0.018
+    return 0.724 / (1 + np.exp(-0.052 * (x - 152.611))) + 0.018
 
 
 #------------------------------------------------------------------------------------------------------------------------------------
@@ -319,20 +323,20 @@ def get_pdockq_elofsson(pdb_filepath:str, chains:list=None) -> float:
 #------------------------------------------------------------------------------------------------------------------------------------
 
 
-
-def get_contacts_from_structure(pdb_filename:str, max_distance:float = 8, min_plddt:float = 70, valid_aas:str='', within_chain = False) -> dict:
+def get_contacts_from_structure(pdb_filename: str, max_distance: float = 8, min_plddt: float = 70, valid_aas: str = '',
+                                within_chain=False) -> dict:
     """
         Returns a dict that contains all amino acids between different chains that are in contact and meet the specified criteria
 
         :param pdb_filename:string of the filepath to the PDB structure file to be parsed for contacts
         :param max_distance:the maximum allowed distance in Angstroms that the 2 residues must have in order to be considered in contact
         :param min_plddt:the minimum pLDDT(0-100) 2 residues must have to be considered in contact
-    """ 
+    """
 
     #holds a more relaxed distance criteria for fast preliminary filtering  
-    d2_n_cutoff = (max_distance + 20)**2
+    d2_n_cutoff = (max_distance + 20) ** 2
 
-    d2_cutoff = max_distance**2
+    d2_cutoff = max_distance ** 2
     last_chain = None
     abs_res_index = 0
     chain_index = -1
@@ -340,24 +344,24 @@ def get_contacts_from_structure(pdb_filename:str, max_distance:float = 8, min_pl
 
     residues = []
 
-    #holds 3d coordinates of all amide nitrogens for all residues
-    #organized as a 2d list with rows representing chains and columns are residues within the chain
+    # holds 3d coordinates of all amide nitrogens for all residues
+    # organized as a 2d list with rows representing chains and columns are residues within the chain
     N_coords = []
-    
+
     for atom_line in get_lines_from_pdb_file(pdb_filename):
         if atom_line[0:4] != 'ATOM':
             continue
-        
+
         atom_type = atom_line[13:16].strip()
         is_nitrogen = atom_type == 'N'
-        if(is_nitrogen):
-            #Keep track of what the absolute index of this residue in the file is 
+        if (is_nitrogen):
+            # Keep track of what the absolute index of this residue in the file is
             abs_res_index += 1
 
-        #in AlphaFold output PDB files, pLDDT values are stored in the "bfactor" column 
+        # in AlphaFold output PDB files, pLDDT values are stored in the "bfactor" column
         bfactor = float(atom_line[60:66])
         if bfactor < min_plddt:
-            #No need to examine this atom since it does not meet the pLDDT cutoff, skip it
+            # No need to examine this atom since it does not meet the pLDDT cutoff, skip it
             continue
 
         aa_type = aa_3c_to_1c[atom_line[17:20]]
@@ -369,29 +373,30 @@ def get_contacts_from_structure(pdb_filename:str, max_distance:float = 8, min_pl
         atom = atom_from_pdb_line(atom_line)
         if is_nitrogen:
 
-            #Every amino acid residue starts PDB entry with exactly one "N" atom, so when we see one we know we have just encountered a new residue
+            # Every amino acid residue starts PDB entry with exactly one "N" atom, so when we see one we know we have just encountered a new residue
             chain = atom_line[20:22].strip()
             if chain != last_chain:
-                #Are we in a new chain? If so, increment chain index and create new list in "residues"
+                # Are we in a new chain? If so, increment chain index and create new list in "residues"
                 chain_index += 1
                 last_chain = chain
                 N_coords.append([])
                 residues.append([])
                 chains.append(chain)
 
-            residue = {"chain":chain, "atoms":[],'c_ix':int(atom_line[22:26]), "a_ix":abs_res_index, "type":aa_type, "plddt":bfactor}
+            residue = {"chain": chain, "atoms": [], 'c_ix': int(atom_line[22:26]), "a_ix": abs_res_index,
+                       "type": aa_type, "plddt": bfactor}
             residues[chain_index].append(residue)
 
-            #add nitrogen atom coordinates to coordinates list to allow for fast broad searching later
+            # add nitrogen atom coordinates to coordinates list to allow for fast broad searching later
             N_coords[chain_index].append(atom['xyz'])
 
         residue['atoms'].append(atom)
-    
+
     contacts = []
     num_chains = len(chains)
 
-    #loop through all the protein chains to find contacts between chains
-    #strategy is to first look for residues in general proximity by just looking at the distance between their amide nitrogen
+    # loop through all the protein chains to find contacts between chains
+    # strategy is to first look for residues in general proximity by just looking at the distance between their amide nitrogen
     for i in range(0, num_chains):
         chain_1_coords = N_coords[i]
         num_in_c1 = len(chain_1_coords)
@@ -407,27 +412,30 @@ def get_contacts_from_structure(pdb_filename:str, max_distance:float = 8, min_pl
             c2_matrix = np.tile(chain_2_coords, (num_in_c1, 1)).reshape(num_in_c1, num_in_c2, 3)
 
             #calculate euclidian distance squared (faster) between all amide nitorgens of all residues
-            d2s = np.sum((c1_matrix - c2_matrix)**2, axis=2)
+            d2s = np.sum((c1_matrix - c2_matrix) ** 2, axis=2)
             #get residue pairs where amide nitrogens are closer than the initial broad cutoff
             index_pairs = list(zip(*np.where(d2s < d2_n_cutoff)))
 
             #find closest atoms between residues that were found to be somewhat in proximity
             for c1_res_ix, c2_res_ix in index_pairs:
-                
+
                 r1 = residues[i][c1_res_ix]
                 r2 = residues[i2][c2_res_ix]
                 min_d2, atoms = get_closest_atoms(r1, r2)
-                if(min_d2 < d2_cutoff):
+                if (min_d2 < d2_cutoff):
                     #residues have atoms closer than specified cutoff, lets add them to the list
                     contacts.append({
                         'distance': round(math.sqrt(min_d2), 1),
-                        "aa1":{"chain":r1["chain"], "type":r1["type"], "c_ix":r1['c_ix'], "a_ix":r1['a_ix'], "atom":atoms[0]['type'], "plddt": r1["plddt"]},
-                        "aa2":{"chain":r2["chain"], "type":r2["type"], "c_ix":r2['c_ix'], "a_ix":r2['a_ix'], "atom":atoms[1]['type'], "plddt": r2["plddt"]}
+                        "aa1": {"chain": r1["chain"], "type": r1["type"], "c_ix": r1['c_ix'], "a_ix": r1['a_ix'],
+                                "atom": atoms[0]['type'], "plddt": r1["plddt"]},
+                        "aa2": {"chain": r2["chain"], "type": r2["type"], "c_ix": r2['c_ix'], "a_ix": r2['a_ix'],
+                                "atom": atoms[1]['type'], "plddt": r2["plddt"]}
                     })
     return contacts
 
 
-def get_contacts(pdb_filename:str, pae_filename:str, max_distance:float, min_plddt:float, max_pae:float, pae_mode:str, valid_aas:str = '') -> dict:
+def get_contacts(pdb_filename: str, pae_filename: str, max_distance: float, min_plddt: float, max_pae: float,
+                 pae_mode: str, valid_aas: str = '') -> dict:
     """
         Get contacts from a protein structure in PDB format that meet the specified distance and confidence criteria.
 
@@ -444,7 +452,8 @@ def get_contacts(pdb_filename:str, pae_filename:str, max_distance:float, min_pld
 
     model_num = get_af_model_num(pdb_filename)
     if model_num < 1 or model_num > 5:
-        raise ValueError('There are only 5 Alphafold models, numbered 1 to 5. All PDB files and PAE files must have a valid model number to be analyzed.')
+        raise ValueError(
+            'There are only 5 Alphafold models, numbered 1 to 5. All PDB files and PAE files must have a valid model number to be analyzed.')
 
     if ignore_pae == False and model_num != get_af_model_num(pae_filename):
         raise ValueError('File mismatch, can only compare PDB and PAE files from same complex and the same AF2 model')
@@ -453,9 +462,9 @@ def get_contacts(pdb_filename:str, pae_filename:str, max_distance:float, min_pld
     contacts = get_contacts_from_structure(pdb_filename, max_distance, min_plddt, valid_aas)
     if len(contacts) < 1:
         return {}
-    
+
     filtered_contacts = {}
-    
+
     pae_data = None
     total_aa_length = 0
 
@@ -469,70 +478,71 @@ def get_contacts(pdb_filename:str, pae_filename:str, max_distance:float, min_pld
     for c in contacts:
 
         aas = [c['aa1'], c['aa2']]
-        aa_indices = [aas[0]['a_ix'],aas[1]['a_ix']]
+        aa_indices = [aas[0]['a_ix'], aas[1]['a_ix']]
 
         pae_values = [0, 0]
         pae_value = 0
 
         if not ignore_pae:
-            #convert the absolute amino acid index into the linear index where the 2 PAE values for each pair are (x, y) and (y, x)
-            pae_index_1 = total_aa_length*(aa_indices[0] - 1) + aa_indices[1] - 1
-            pae_index_2 = total_aa_length*(aa_indices[1] - 1) + aa_indices[0] - 1
+            # convert the absolute amino acid index into the linear index where the 2 PAE values for each pair are (
+            # x, y) and (y, x)
+            pae_index_1 = total_aa_length * (aa_indices[0] - 1) + aa_indices[1] - 1
+            pae_index_2 = total_aa_length * (aa_indices[1] - 1) + aa_indices[0] - 1
 
             if pae_index_1 >= len(pae_data) or pae_index_2 >= len(pae_data):
-                raise ValueError(f"Something went wrong and we are attempting to access non-existant PAE values for PDB file: {pdb_filename} from PAE file: {pae_filename}")
+                raise ValueError(f"Something went wrong and we are attempting to access non-existant PAE values for "
+                                 f"PDB file: {pdb_filename} from PAE file: {pae_filename}")
 
-            #pae data contains string values, have to convert them to floats before using them for math calculations
+            # pae data contains string values, have to convert them to floats before using them for math calculations
             pae_values = [float(pae_data[pae_index_1]), float(pae_data[pae_index_2])]
-            pae_value = 0.5*(pae_values[0] + pae_values[1]) if pae_mode == 'avg' else min(pae_values[0],pae_values[1])
-            
-            if(pae_value > max_pae):
-                #The pAE value of this residue pair is too high, skip it
+            pae_value = 0.5 * (pae_values[0] + pae_values[1]) if pae_mode == 'avg' else min(pae_values[0],
+                                                                                            pae_values[1])
+
+            if (pae_value > max_pae):
+                # The pAE value of this residue pair is too high, skip it
                 continue
 
         if len(valid_aas) > 0:
             if aas[0]['type'] not in valid_aas or aas[1]['type'] not in valid_aas:
-                 #This contact pair has amino acids not in the specified set, skip
+                #This contact pair has amino acids not in the specified set, skip
                 continue
 
-        #This contact meets all the specified criteria, add it to the dict
+        # This contact meets all the specified criteria, add it to the dict
 
-        #Use the 2 chains IDS as a key
+        # Use the 2 chains IDS as a key
         chain_contact_id = aas[0]['chain'] + ":" + aas[1]['chain']
         if chain_contact_id not in filtered_contacts:
             filtered_contacts[chain_contact_id] = {}
 
-
         #Use the absolute indices of the two residues in the PDB file as the unique key for this pair/contact
         contact_id = str(aa_indices[0]) + '&' + str(aa_indices[1])
         filtered_contacts[chain_contact_id][contact_id] = {
-
-            'chains':[aas[0]['chain'], aas[1]['chain']],
-            'inchain_indices':[aas[0]['c_ix'], aas[1]['c_ix']],
-            'types':[aas[0]['type'], aas[1]['type']], 
-            'pae':pae_value,
-            'paes':pae_values,
-            'plddts':[aas[0]['plddt'], aas[1]['plddt']], 
-            'model':model_num,
-            'distance':c['distance']
+            'chains': [aas[0]['chain'], aas[1]['chain']],
+            'inchain_indices': [aas[0]['c_ix'], aas[1]['c_ix']],
+            'types': [aas[0]['type'], aas[1]['type']],
+            'pae': pae_value,
+            'paes': pae_values,
+            'plddts': [aas[0]['plddt'], aas[1]['plddt']],
+            'model': model_num,
+            'distance': c['distance']
         }
 
     return filtered_contacts
 
-        
-def calculate_interface_statistics(contacts:dict) -> dict:
+
+def calculate_interface_statistics(contacts: dict) -> dict:
     """
         Returns summary confidence statistics such as pAE and pLDDT values across all the contacts in an interface
 
         :param contacts:dict of contacts in an interface of the form {'chain1:chain2':{'1&400':{plddts:[75,70], paes:[10, 7]}, '4&600':{plddts:[68,77], paes:[8, 3]}}}
-    """ 
+    """
 
     #plddts always range from 0 to 100
-    plddt_sum = 0 
+    plddt_sum = 0
     plddt_min = 100
     plddt_max = 0
     plddt_avg = 0
-   
+
     #paes always range from 0 to 30
     pae_avg = 0
     pae_sum = 0
@@ -545,7 +555,6 @@ def calculate_interface_statistics(contacts:dict) -> dict:
 
     for interchain_id, interchain_contacts in contacts.items():
         for contact_id, contact in interchain_contacts.items():
-
             avg_plddt = mean(contact['plddts'])
             plddt_sum += avg_plddt
             plddt_max = max(plddt_max, avg_plddt)
@@ -559,23 +568,23 @@ def calculate_interface_statistics(contacts:dict) -> dict:
 
             num_contacts += 1
 
-
     if num_contacts > 0:
-        plddt_avg = round(plddt_sum/num_contacts, 1)
-        pae_avg = round(pae_sum/num_contacts, 1)
-        distance_avg = round(d_sum/num_contacts, 1)
+        plddt_avg = round(plddt_sum / num_contacts, 1)
+        pae_avg = round(pae_sum / num_contacts, 1)
+        distance_avg = round(d_sum / num_contacts, 1)
     else:
         pae_min = 0
         plddt_min = 0
 
-    data = {'num_contacts':num_contacts,
-            'plddt':[plddt_min, plddt_avg, plddt_max],
-            'pae':[pae_min, pae_avg, pae_max],
+    data = {'num_contacts': num_contacts,
+            'plddt': [plddt_min, plddt_avg, plddt_max],
+            'pae': [pae_min, pae_avg, pae_max],
             'distance_avg': distance_avg}
 
     return data
 
-def summarize_interface_statistics(interfaces:dict) -> dict:
+
+def summarize_interface_statistics(interfaces: dict) -> dict:
     """
         summarize_interface_statistics returns aggregate statistics over multiple interfaces across predictions from different models
 
@@ -592,7 +601,7 @@ def summarize_interface_statistics(interfaces:dict) -> dict:
                 },     
             }
     """
-    
+
     unique_contacts = {}
     max_num_models = 0
 
@@ -617,17 +626,18 @@ def summarize_interface_statistics(interfaces:dict) -> dict:
 
         if observation_count == max_num_models:
             num_contacts_with_max_n_models += 1
-    
+
     summary_stats = {
-        'max_n_models':max_num_models,
-        'avg_n_models':round(sum_num_models/num_contacts, 1) if num_contacts > 0 else 0,
-        'num_contacts_with_max_n_models':num_contacts_with_max_n_models,
-        'num_unique_contacts':num_contacts
+        'max_n_models': max_num_models,
+        'avg_n_models': round(sum_num_models / num_contacts, 1) if num_contacts > 0 else 0,
+        'num_contacts_with_max_n_models': num_contacts_with_max_n_models,
+        'num_unique_contacts': num_contacts
     }
     return summary_stats
 
 
-def analyze_complexes(cpu_index:int, input_folder:str, output_folder:str, complexes:list, max_distance:float, min_plddt:float, max_pae:float, pae_mode:str, valid_aas:str = '', ignore_pae:bool = False):
+def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, complexes: list, max_distance: float,
+                      min_plddt: float, max_pae: float, pae_mode: str, valid_aas: str = '', ignore_pae: bool = False):
     """
         Analyze protein complexes in PDB format.
 
@@ -647,25 +657,28 @@ def analyze_complexes(cpu_index:int, input_folder:str, output_folder:str, comple
     interface_contacts = {}
     all_interface_stats = []
     all_contacts = []
-    
+
     for index, cname in enumerate(complexes):
 
         print(f"Analyzing {index + 1} / {len(complexes)}: {cname}")
 
         #get PDB files ending in .pdb or .pdb followed by two letters as would be the case for compressed gzipped files
-        pdb_filepaths = get_filepaths_for_complex(input_folder, cname, '*.pdb') + get_filepaths_for_complex(input_folder, cname, "*.pdb.??")
+        pdb_filepaths = get_filepaths_for_complex(input_folder, cname, '*.pdb') + get_filepaths_for_complex(
+            input_folder, cname, "*.pdb.??")
         if len(pdb_filepaths) < 1:
             print(f"ERROR: No PDB files found for {cname}")
             print("SKIPPING: " + cname)
-            continue 
+            continue
 
         pae_filepaths = []
         if ignore_pae == False:
             #get pAE files ending in .json or .json followed by two letters as would be the case for compressed gzipped files
-            pae_filepaths = get_filepaths_for_complex(input_folder, cname, '*.json') + get_filepaths_for_complex(input_folder, cname, "*.json.??")
-        
+            pae_filepaths = get_filepaths_for_complex(input_folder, cname, '*.json') + get_filepaths_for_complex(
+                input_folder, cname, "*.json.??")
+
             if len(pdb_filepaths) != len(pae_filepaths):
-                print(f"ERROR: Number of PDB files ({len(pdb_filepaths)}) does not match number of PAE files ({len(pae_filepaths)})")
+                print(
+                    f"ERROR: Number of PDB files ({len(pdb_filepaths)}) does not match number of PAE files ({len(pae_filepaths)})")
                 print("SKIPPING: " + cname)
                 continue
 
@@ -683,7 +696,7 @@ def analyze_complexes(cpu_index:int, input_folder:str, output_folder:str, comple
         best_interface_stats = None
 
         for pdb_filename, pae_filename in zip(pdb_filepaths, pae_filepaths):
-            
+
             model_num = get_af_model_num(pdb_filename)
             contacts = get_contacts(pdb_filename, pae_filename, max_distance, min_plddt, max_pae, pae_mode, valid_aas)
             interface_contacts[model_num] = contacts
@@ -691,18 +704,18 @@ def analyze_complexes(cpu_index:int, input_folder:str, output_folder:str, comple
             for interchain_str, interchain_interfaces in contacts.items():
                 for contact_id, c in interchain_interfaces.items():
                     all_contacts.append({
-                        "complex_name":cname,
-                        "model_num":model_num,
-                        "aa1_chain":c['chains'][0],
-                        "aa1_index":c['inchain_indices'][0],
-                        "aa1_type":c['types'][0],
-                        "aa1_plddt":round(c['plddts'][0]),
-                        "aa2_chain":c['chains'][1],
-                        "aa2_index":c['inchain_indices'][1],
-                        "aa2_type":c['types'][1],
-                        "aa2_plddt":round(c['plddts'][1]),
-                        "pae":c['pae'],
-                        "min_distance":c['distance'],
+                        "complex_name": cname,
+                        "model_num": model_num,
+                        "aa1_chain": c['chains'][0],
+                        "aa1_index": c['inchain_indices'][0],
+                        "aa1_type": c['types'][0],
+                        "aa1_plddt": round(c['plddts'][0]),
+                        "aa2_chain": c['chains'][1],
+                        "aa2_index": c['inchain_indices'][1],
+                        "aa2_type": c['types'][1],
+                        "aa2_plddt": round(c['plddts'][1]),
+                        "pae": c['pae'],
+                        "min_distance": c['distance'],
                     })
 
             if_stats = calculate_interface_statistics(contacts)
@@ -715,23 +728,22 @@ def analyze_complexes(cpu_index:int, input_folder:str, output_folder:str, comple
                 best_interface_stats = if_stats
                 best_interface_stats['model_num'] = model_num
             else:
-
                 if if_stats['pdockq'] > best_interface_stats['pdockq']:
                     best_interface_stats = if_stats
                     best_interface_stats['model_num'] = model_num
 
             all_interface_stats.append({
-                "complex_name":cname,
-                "model_num":model_num,
-                "pdockq":if_stats['pdockq'],
-                "ncontacts":if_stats['num_contacts'], 
-                "plddt_min":round(if_stats['plddt'][0]),
-                "plddt_avg":round(if_stats['plddt'][1]),
-                "plddt_max":round(if_stats['plddt'][2]),
-                "pae_min":round(if_stats['pae'][0]),
-                "pae_avg":round(if_stats['pae'][1]),
-                "pae_max":round(if_stats['pae'][2]), 
-                "distance_avg":if_stats['distance_avg'],
+                "complex_name": cname,
+                "model_num": model_num,
+                "pdockq": if_stats['pdockq'],
+                "ncontacts": if_stats['num_contacts'],
+                "plddt_min": round(if_stats['plddt'][0]),
+                "plddt_avg": round(if_stats['plddt'][1]),
+                "plddt_max": round(if_stats['plddt'][2]),
+                "pae_min": round(if_stats['pae'][0]),
+                "pae_avg": round(if_stats['pae'][1]),
+                "pae_max": round(if_stats['pae'][2]),
+                "distance_avg": if_stats['distance_avg'],
             })
 
         stats = summarize_interface_statistics(interface_contacts)
@@ -743,41 +755,41 @@ def analyze_complexes(cpu_index:int, input_folder:str, output_folder:str, comple
 
         print("Finished analyzing " + cname)
 
-
     if len(summary_stats) < 1:
         print("Was not able to generate any summary statistics")
         return
-    
-    #output all the calculated values as CSV files into the specifed output folder (indexed by CPU to avoid different threads overwriting eachother)
 
-    summary_df = pd.DataFrame.from_dict(summary_stats, 
-                                        orient='index', 
-                                        columns = ['avg_n_models',
-                                                    'max_n_models', 
-                                                    'num_contacts_with_max_n_models', 
-                                                    'num_unique_contacts', 
-                                                    'best_model_num', 
-                                                    'best_pdockq',
-                                                    'best_plddt_avg',
-                                                    'best_pae_avg'])
-    
+    # output all the calculated values as CSV files into the specifed output folder (indexed by CPU to avoid different threads overwriting eachother)
+
+    summary_df = pd.DataFrame.from_dict(summary_stats,
+                                        orient='index',
+                                        columns=['avg_n_models',
+                                                 'max_n_models',
+                                                 'num_contacts_with_max_n_models',
+                                                 'num_unique_contacts',
+                                                 'best_model_num',
+                                                 'best_pdockq',
+                                                 'best_plddt_avg',
+                                                 'best_pae_avg'])
+
     summary_df.index.name = 'complex_name'
     summary_df.to_csv(os.path.join(output_folder, f"summary_cpu{cpu_index}.csv"))
 
     interfaces_df = pd.DataFrame(all_interface_stats)
     interfaces_df.to_csv(os.path.join(output_folder, f"interfaces_cpu{cpu_index}.csv"), index=None)
 
-    #there are cases when no contacts may be detected where we don't want to output anything
+    # there are cases when no contacts may be detected where we don't want to output anything
     if len(all_contacts) > 0:
         contacts_df = pd.DataFrame(all_contacts)
         contacts_df.to_csv(os.path.join(output_folder, f"contacts_cpu{cpu_index}.csv"), index=None)
 
 
 def analysis_thread_did_finish(arg1):
-   return
+    return
 
 
-def analyze_folder(data_folder:str, name_filter:str, max_distance:float, plddt_cutoff:float, pae_cutoff:float, pae_mode:str, valid_aas:str='', ignore_pae:bool=False) -> str:
+def analyze_folder(data_folder: str, name_filter: str, max_distance: float, plddt_cutoff: float, pae_cutoff: float,
+                   pae_mode: str, valid_aas: str = '', ignore_pae: bool = False) -> str:
     """
         Analyze a folder containing protein structures in PDB format.
 
@@ -798,48 +810,54 @@ def analyze_folder(data_folder:str, name_filter:str, max_distance:float, plddt_c
         complex_names = list(filter(lambda x: name_filter in x, complex_names))
 
     if len(complex_names) < 1:
-        print("ERROR: No complexes to analyze found. Please ensure all finished complexes/predictions you would like analyzed have a .done.txt file")
+        print(
+            "ERROR: No complexes to analyze found. Please ensure all finished complexes/predictions you would like analyzed have a .done.txt file")
         return None
-    
+
     print(f"Found {len(complex_names)} complexes to analyze in folder: {data_folder}")
 
-    output_folder = os.path.basename(data_folder) + "_analysis"
-    index = 1
-    while os.path.isdir(output_folder):
-        #if we find existing folders with the output folder name we will iterate over index until we find an unused folder name
-        output_folder = os.path.basename(data_folder) + "_analysis_" + str(index)
-        index += 1
+    output_folder = f"{data_folder}/{os.path.basename(data_folder)}_analysis"
+    # index = 1
+    # while os.path.isdir(output_folder):
+    #     #if we find existing folders with the output folder name we will iterate over index until we find an unused folder name
+    #     output_folder = os.path.basename(data_folder) + "_analysis_" + str(index)
+    #     index += 1
 
-    #guaranteed to have a new unique output_folder name, lets make it     
-    os.mkdir(output_folder)
+    #guaranteed to have a new unique output_folder name, lets make it
+    if not os.path.exists(output_folder):
+        os.mkdir(output_folder)
+    else:
+        print(f"Reusing directory {output_folder}")
 
-    #find how many CPUs the system has and use as many as possible to speed up the analysis time
+    # find how many CPUs the system has and use as many as possible to speed up the analysis time
     num_cpus_to_use = mp.cpu_count()
-    num_cpus_to_use = min(num_cpus_to_use,len(complex_names))
+    num_cpus_to_use = min(num_cpus_to_use, len(complex_names))
     print(f"Splitting analysis job across {num_cpus_to_use} different CPUs")
     pool = mp.Pool(num_cpus_to_use)
 
-    #take the list of complexes and divide it across as many CPUs as we found
+    # take the list of complexes and divide it across as many CPUs as we found
     complex_name_lists = distribute(complex_names, num_cpus_to_use)
 
-    traces = []
-    for cpu_index in range(0, num_cpus_to_use):
-        #create a new thread to analyze the complexes (1 thread per CPU)
-        traces.append(pool.apply_async(analyze_complexes, 
-                                       args=(cpu_index, data_folder, output_folder, complex_name_lists[cpu_index], max_distance, plddt_cutoff, pae_cutoff, pae_mode, valid_aas, ignore_pae), 
-                                       callback=analysis_thread_did_finish))
-
-    for t in traces:
-        t.get()
-
-    pool.close()
-    pool.join()
+    # traces = []
+    # for cpu_index in range(0, num_cpus_to_use):
+    #     #create a new thread to analyze the complexes (1 thread per CPU)
+    #     traces.append(pool.apply_async(analyze_complexes,
+    #                                    args=(cpu_index, data_folder, output_folder, complex_name_lists[cpu_index], max_distance, plddt_cutoff, pae_cutoff, pae_mode, valid_aas, ignore_pae),
+    #                                    callback=analysis_thread_did_finish))
+    #
+    # for t in traces:
+    #     t.get()
+    #
+    # pool.close()
+    # pool.join()
+    analyze_complexes(0, data_folder, output_folder, complex_name_lists[0], max_distance, plddt_cutoff, pae_cutoff,
+                      pae_mode, valid_aas, ignore_pae)
 
     #merge all the seperate files produced by the independently running CPU threads
     for name in ['summary', 'interfaces', 'contacts']:
 
         files = glob.glob(os.path.join(output_folder, name + '_cpu*.csv'))
-        if(len(files) < 1):
+        if (len(files) < 1):
             # no files to join, skip
             continue
 
@@ -863,30 +881,30 @@ if __name__ == '__main__':
         "input",
         default="",
         help="One or more folders with PDB files and pAE JSON files output by Colabfold. Note that '.done.txt' marker files produced by Colabfold are used to find the names of complexes to analyze.",
-        nargs='*',)
+        nargs='*', )
     parser.add_argument(
         "--distance",
         default=8,
         help="Maximum distance in Angstroms that any two atoms in two residues in different chains can have for them be considered in contact for the analysis. Default is 8 Angstroms.",
-        type=float,)
+        type=float, )
     parser.add_argument(
         "--pae",
         default=15,
         help="Maximum predicted Angstrom Error (pAE) value in Angstroms allowed for a contact(pair of residues) to be considered in the analysis. Valid values range from 0 (best) to 30 (worst). Default is 15.",
-        type=float,)
+        type=float, )
     parser.add_argument(
         "--pae-mode",
         default='min',
         help=" How to combine the dual pAE values (x, y) and (y, x) outout for each residue pair in the pAE JSON files into a single pAE value for a residue pair (x, y).  Default is 'min'.",
-        type=str, 
+        type=str,
         choices=['min', 'avg'])
     parser.add_argument(
         "--plddt",
         default=50,
         help="Minimum pLDDT values required by both residues in a contact in order for that contact to be included in the analysis. Values range from 0 (worst) to 100 (best). Default is 50",
-        type=float,)
+        type=float, )
     parser.add_argument(
-        '--aas', 
+        '--aas',
         default='',
         help="A string representing what amino acids contacts to look/filter for. Allows you to limit what contacts to include in the analysis. By default is blank meaning all amino acids. A value of K would be for any lysine lysine pairs. KR would be RR, KR, RK, or RR pairs, etc",
         type=str)
@@ -894,13 +912,13 @@ if __name__ == '__main__':
         "--name-filter",
         default='',
         help="An optional string that allows one to only analyze complexes that contain that string in their name",
-        type=str,)
+        type=str, )
     parser.add_argument(
-        '--combine-all', 
+        '--combine-all',
         help="Combine the analysis from multiple folders specified by the input argument",
         action='store_true')
     parser.add_argument(
-        '--ignore-pae', 
+        '--ignore-pae',
         help="Ignore PAE values and just analyze the PDB files. Overides any other PAE settings.",
         action='store_true')
 
@@ -916,45 +934,47 @@ if __name__ == '__main__':
         sys.exit("The pLDDT cutoff has been set too low. Please use a number greater than 1")
 
     if (args.plddt > 99):
-        sys.exit("The pLDDT cutoff has been set too high (pLDDT values range from 0 to 100). Please use a number less than 100 ")
+        sys.exit(
+            "The pLDDT cutoff has been set too high (pLDDT values range from 0 to 100). Please use a number less than 100 ")
 
     if len(args.input) < 1:
         sys.exit("No folders to analyze were provided");
-    
+
     #remove any invalid amino acid chracters and ensure they are all converted to uppercase
     args.aas = re.sub(r'[^ACDEFGHIKLMNPQRSTVWY]', '', args.aas.upper())
 
     #loop through all the folders specified in the input
     output_folders = []
     for folder in args.input:
-        
+
         if not os.path.isdir(folder):
             print(f"ERROR {folder} does not appear to be a non valid folder, skipping")
             continue
 
         print(f"Starting to analyze folder ({folder})")
-        output_folder = analyze_folder(folder, args.name_filter, args.distance, args.plddt, args.pae, args.pae_mode, args.aas, args.ignore_pae)
+        output_folder = analyze_folder(folder, args.name_filter, args.distance, args.plddt, args.pae, args.pae_mode,
+                                       args.aas, args.ignore_pae)
         if output_folder:
             output_folders.append(output_folder)
         print(f"Finished analyzing folder ({folder})")
-        print(" "*80)
-        print("*"*80)
-        print("*"*80)
-        print(" "*80)
+        print(" " * 80)
+        print("*" * 80)
+        print("*" * 80)
+        print(" " * 80)
 
     if len(output_folders) > 1 and args.combine_all:
-        
+
         combined_output_folder = 'af_multimer_contact_analysis'
         index = 1
         while os.path.isdir(combined_output_folder):
             #if we find existing folders with the output folder name we will iterate over index until we find an unused folder name
             combined_output_folder = "af_multimer_contact_analysis_" + str(index)
             index += 1
-        
+
         os.mkdir(combined_output_folder)
 
         for name in ['summary', 'interfaces', 'contacts']:
-            
+
             csv_files = []
             for folder in output_folders:
                 csv_files.append(os.path.join(folder, name + '.csv'))
@@ -962,10 +982,10 @@ if __name__ == '__main__':
             sort_col = None
             if name == 'summary':
                 sort_col = 'avg_n_models'
-            
+
             join_csv_files(csv_files, os.path.join(combined_output_folder, name + '.csv'), sort_col=sort_col)
-        
+
         for folder in output_folders:
             shutil.rmtree(folder)
 
-    print(f"Finished analyzing all specified folders")
+   print(f"Finished analyzing all specified folders")
