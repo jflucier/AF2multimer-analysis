@@ -530,7 +530,7 @@ def get_contacts(pdb_filename: str, pae_filename: str, max_distance: float, min_
     return filtered_contacts
 
 
-def calculate_interface_statistics(contacts: dict) -> dict:
+def calculate_interface_statistics(interchain_id, interchain_lbl, contacts: dict) -> dict:
     """
         Returns summary confidence statistics such as pAE and pLDDT values across all the contacts in an interface
 
@@ -553,20 +553,25 @@ def calculate_interface_statistics(contacts: dict) -> dict:
     num_contacts = 0
     d_sum = 0
 
-    for interchain_id, interchain_contacts in contacts.items():
-        for contact_id, contact in interchain_contacts.items():
-            avg_plddt = mean(contact['plddts'])
-            plddt_sum += avg_plddt
-            plddt_max = max(plddt_max, avg_plddt)
-            plddt_min = min(plddt_min, avg_plddt)
+    if interchain_id not in contacts.keys():
+        interchain_contacts = {}
+    else:
+        interchain_contacts = contacts[interchain_id]
 
-            d_sum += contact['distance']
+    # for interchain_id, interchain_contacts in contacts.items():
+    for contact_id, contact in interchain_contacts.items():
+        avg_plddt = mean(contact['plddts'])
+        plddt_sum += avg_plddt
+        plddt_max = max(plddt_max, avg_plddt)
+        plddt_min = min(plddt_min, avg_plddt)
 
-            pae_max = max(pae_max, contact['pae'])
-            pae_min = min(pae_min, contact['pae'])
-            pae_sum += contact['pae']
+        d_sum += contact['distance']
 
-            num_contacts += 1
+        pae_max = max(pae_max, contact['pae'])
+        pae_min = min(pae_min, contact['pae'])
+        pae_sum += contact['pae']
+
+        num_contacts += 1
 
     if num_contacts > 0:
         plddt_avg = round(plddt_sum / num_contacts, 1)
@@ -576,10 +581,10 @@ def calculate_interface_statistics(contacts: dict) -> dict:
         pae_min = 0
         plddt_min = 0
 
-    data = {'num_contacts': num_contacts,
-            'plddt': [plddt_min, plddt_avg, plddt_max],
-            'pae': [pae_min, pae_avg, pae_max],
-            'distance_avg': distance_avg}
+    data = {f'num_contacts_{interchain_lbl}': num_contacts,
+            f'plddt_{interchain_lbl}': [plddt_min, plddt_avg, plddt_max],
+            f'pae_{interchain_lbl}': [pae_min, pae_avg, pae_max],
+            f'distance_avg_{interchain_lbl}': distance_avg}
 
     return data
 
@@ -654,15 +659,17 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
     """
 
     summary_stats = {}
-    interface_contacts = {}
     all_interface_stats = []
     all_contacts = []
 
     for index, cname in enumerate(complexes):
 
-        print(f"Analyzing {index + 1} / {len(complexes)}: {cname}")
+        # read folder name and extract prot names with _ split
+        complex_name = os.path.basename(input_folder)
 
-        #get PDB files ending in .pdb or .pdb followed by two letters as would be the case for compressed gzipped files
+        print(f"Analyzing {index + 1} / {len(complexes)}: {complex_name}")
+
+        print("-> get PDB files ending in .pdb or .pdb")
         pdb_filepaths = get_filepaths_for_complex(input_folder, cname, '*.pdb') + get_filepaths_for_complex(
             input_folder, cname, "*.pdb.??")
         if len(pdb_filepaths) < 1:
@@ -670,6 +677,7 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
             print("SKIPPING: " + cname)
             continue
 
+        print("-> get PAE files ending in .json")
         pae_filepaths = []
         if ignore_pae == False:
             #get pAE files ending in .json or .json followed by two letters as would be the case for compressed gzipped files
@@ -679,10 +687,10 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
             if len(pdb_filepaths) != len(pae_filepaths):
                 print(
                     f"ERROR: Number of PDB files ({len(pdb_filepaths)}) does not match number of PAE files ({len(pae_filepaths)})")
-                print("SKIPPING: " + cname)
+                print("SKIPPING: " + complex_name)
                 continue
 
-        #sort the files by model number so that they are aligned for analysis ie PDB model 1 = PAE model 1
+        print("-> sort the files by model number so that they are aligned for analysis ie PDB model 1 = PAE model 1")
         pdb_filepaths.sort(key=get_af_model_num)
         if ignore_pae == False:
             pae_filepaths.sort(key=get_af_model_num)
@@ -690,21 +698,25 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
             for f in pdb_filepaths:
                 pae_filepaths.append('')
 
-        interface_contacts = {}
 
+        interface_contacts = {}
         #record which interface has the best score (ie the most high confidence contacts so we can report it out later)
         best_interface_stats = None
 
         for pdb_filename, pae_filename in zip(pdb_filepaths, pae_filepaths):
 
             model_num = get_af_model_num(pdb_filename)
+            print(f"-> map chain labels found in pdb to protein names for model {model_num}")
+            chain_list = get_chain_list_names(pdb_filename)
+            chain_list_lbl = complex_name.split("_")
+            print(f"-> retrieving contacts for model {model_num}")
             contacts = get_contacts(pdb_filename, pae_filename, max_distance, min_plddt, max_pae, pae_mode, valid_aas)
             interface_contacts[model_num] = contacts
 
             for interchain_str, interchain_interfaces in contacts.items():
                 for contact_id, c in interchain_interfaces.items():
                     all_contacts.append({
-                        "complex_name": cname,
+                        "complex_name": complex_name,
                         "model_num": model_num,
                         "aa1_chain": c['chains'][0],
                         "aa1_index": c['inchain_indices'][0],
@@ -718,59 +730,109 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
                         "min_distance": c['distance'],
                     })
 
-            if_stats = calculate_interface_statistics(contacts)
-            if_stats['pdockq'] = 0
+            model_total_pdockq = 0
+            model_total_plddt = 0
+            model_total_pae = 0
 
-            if if_stats['num_contacts'] > 0:
-                if_stats['pdockq'] = round(get_pdockq_elofsson(pdb_filename), 3)
+            if_stats = {}
+            for i in range(0, len(chain_list)):
+                chain1 = chain_list[i]
+                chain1_lbl = chain_list_lbl[i]
+                i2_start = i + 1
 
+                for i2 in range(i2_start, len(chain_list)):
+                    chain2 = chain_list[i2]
+                    chain2_lbl = chain_list_lbl[i2]
+                    chain_idx = f"{chain1}:{chain2}"
+                    chain_lbl = f"{chain1_lbl}:{chain2_lbl}"
+                    print(f"-> calculating interface statistics for proteins {chain_lbl} in model {model_num}")
+                    if_stats_lbl = calculate_interface_statistics(chain_idx, chain_lbl, contacts)
+                    #returned
+                    # data = {f'num_contacts_{interchain_id}': num_contacts,
+                    #         f'plddt_{interchain_id}': [plddt_min, plddt_avg, plddt_max],
+                    #         f'pae_{interchain_id}': [pae_min, pae_avg, pae_max],
+                    #         f'distance_avg_{interchain_id}': distance_avg}
+
+                    if if_stats_lbl[f'num_contacts_{chain_lbl}'] > 0:
+                        #     for i in range(0, len(chain_list)):
+                        #         chain1 = chain_list[i]
+                        #         i2_start = i + 1
+                        #         for i2 in range(i2_start, len(chain_list)):
+                        #             chain2 = chain_list[i2]
+                        #             chain_lbl = f"{chain1}:{chain2}"
+                        print(f"-> contacts found for {chain_lbl}!")
+                        if_stats_lbl[f'pdockq_{chain_lbl}'] = round(get_pdockq_elofsson(pdb_filename, chain_idx.split(":")), 3)
+                    else:
+                        print(f"-> no contacts found for {chain_lbl}!")
+                        if_stats_lbl[f'pdockq_{chain_lbl}'] = 0
+
+                    model_total_pdockq = model_total_pdockq + if_stats_lbl[f'pdockq_{chain_lbl}']
+                    model_total_plddt = model_total_plddt + if_stats_lbl[f'plddt_{chain_lbl}'][1]
+                    model_total_pae = model_total_pae + if_stats_lbl[f'pae_{chain_lbl}'][1]
+                    if_stats.update(if_stats_lbl)
+
+            model_all_avg_pdockq = model_total_pdockq / len(chain_list)
+            if_stats['model_all_avg_pdockq'] = model_all_avg_pdockq
+            if_stats['model_all_avg_plddt'] = model_total_plddt / len(chain_list)
+            if_stats['model_all_avg_pae'] = model_total_pae / len(chain_list)
+            # add pdockq for best interface
             if best_interface_stats is None:
                 best_interface_stats = if_stats
                 best_interface_stats['model_num'] = model_num
             else:
-                if if_stats['pdockq'] > best_interface_stats['pdockq']:
+                if model_total_pdockq > best_interface_stats['model_all_avg_pdockq']:
                     best_interface_stats = if_stats
                     best_interface_stats['model_num'] = model_num
 
-            all_interface_stats.append({
-                "complex_name": cname,
-                "model_num": model_num,
-                "pdockq": if_stats['pdockq'],
-                "ncontacts": if_stats['num_contacts'],
-                "plddt_min": round(if_stats['plddt'][0]),
-                "plddt_avg": round(if_stats['plddt'][1]),
-                "plddt_max": round(if_stats['plddt'][2]),
-                "pae_min": round(if_stats['pae'][0]),
-                "pae_avg": round(if_stats['pae'][1]),
-                "pae_max": round(if_stats['pae'][2]),
-                "distance_avg": if_stats['distance_avg'],
-            })
+            all_interface_data_stats = {
+                "complex_name": complex_name,
+                "model_num": model_num
+            }
 
+            all_interface_data_stats.update(if_stats)
+            all_interface_stats.append(all_interface_data_stats)
+            # all_interface_stats.append({
+            #     "complex_name": cname,
+            #     "model_num": model_num,
+            #     "pdockq": if_stats['pdockq'],
+            #     "ncontacts": if_stats['num_contacts'],
+            #     "plddt_min": round(if_stats['plddt'][0]),
+            #     "plddt_avg": round(if_stats['plddt'][1]),
+            #     "plddt_max": round(if_stats['plddt'][2]),
+            #     "pae_min": round(if_stats['pae'][0]),
+            #     "pae_avg": round(if_stats['pae'][1]),
+            #     "pae_max": round(if_stats['pae'][2]),
+            #     "distance_avg": if_stats['distance_avg'],
+            # })
+
+        print(f"-> Model {best_interface_stats['model_num']} is the best model")
+        print(f"-> Generating interface summary of all models")
         stats = summarize_interface_statistics(interface_contacts)
         stats['best_model_num'] = best_interface_stats['model_num']
-        stats['best_pdockq'] = best_interface_stats['pdockq']
-        stats['best_plddt_avg'] = best_interface_stats['plddt'][1]
-        stats['best_pae_avg'] = best_interface_stats['pae'][1]
-        summary_stats[cname] = stats
+        stats['best_avg_pdockq'] = best_interface_stats['model_all_avg_pdockq']
+        stats['best_avg_plddt'] = best_interface_stats['model_all_avg_plddt']
+        stats['best_avg_pae'] = best_interface_stats['model_all_avg_pae']
+        summary_stats[complex_name] = stats
 
-        print("Finished analyzing " + cname)
+        print("Finished analyzing " + complex_name)
 
     if len(summary_stats) < 1:
         print("Was not able to generate any summary statistics")
         return
 
-    # output all the calculated values as CSV files into the specifed output folder (indexed by CPU to avoid different threads overwriting eachother)
-
-    summary_df = pd.DataFrame.from_dict(summary_stats,
+    # output all the calculated values as CSV files into the specifed output folder (indexed by CPU to avoid
+    # different threads overwriting each other)
+    print(f"-> Outputting reports")
+    summary_df = pd.DataFrame.from_dict(summary_statssocs1,
                                         orient='index',
                                         columns=['avg_n_models',
                                                  'max_n_models',
                                                  'num_contacts_with_max_n_models',
                                                  'num_unique_contacts',
                                                  'best_model_num',
-                                                 'best_pdockq',
-                                                 'best_plddt_avg',
-                                                 'best_pae_avg'])
+                                                 'best_avg_pdockq',
+                                                 'best_avg_plddt',
+                                                 'best_avg_pae'])
 
     summary_df.index.name = 'complex_name'
     summary_df.to_csv(os.path.join(output_folder, f"summary_cpu{cpu_index}.csv"))
@@ -782,6 +844,25 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
     if len(all_contacts) > 0:
         contacts_df = pd.DataFrame(all_contacts)
         contacts_df.to_csv(os.path.join(output_folder, f"contacts_cpu{cpu_index}.csv"), index=None)
+
+
+def get_chain_list_names(pdb_filename):
+    chains = []
+    # prot_list = "_".split(complex_name)
+    last_chain = None
+    chain_index = -1
+    for atom_line in get_lines_from_pdb_file(pdb_filename):
+        if atom_line[0:4] != 'ATOM':
+            continue
+
+        chain = atom_line[20:22].strip()
+        if chain != last_chain:
+            chain_index += 1
+            last_chain = chain
+            chains.append(chain)
+            # chains[chain] = prot_list[chain_index]
+
+    return chains
 
 
 def analysis_thread_did_finish(arg1):
