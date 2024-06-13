@@ -823,7 +823,7 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
     # output all the calculated values as CSV files into the specifed output folder (indexed by CPU to avoid
     # different threads overwriting each other)
     print(f"-> Outputting reports")
-    summary_df = pd.DataFrame.from_dict(summary_statssocs1,
+    summary_df = pd.DataFrame.from_dict(summary_stats,
                                         orient='index',
                                         columns=['avg_n_models',
                                                  'max_n_models',
