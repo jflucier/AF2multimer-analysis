@@ -959,10 +959,15 @@ def analyze_folder(data_folder: str, name_filter: str, max_distance: float, pldd
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument(
-        "input",
+        "pred_folder",
         default="",
-        help="One or more folders with PDB files and pAE JSON files output by Colabfold. Note that '.done.txt' marker files produced by Colabfold are used to find the names of complexes to analyze.",
-        nargs='*', )
+        help="folders with PDB files and pAE JSON files output by Colabfold. Note that '.done.txt' marker files produced by Colabfold are used to find the names of complexes to analyze.",
+        required=True )
+    parser.add_argument(
+        "--fasta",
+        default="",
+        help="fasta file used for fold",
+        required=True )
     parser.add_argument(
         "--distance",
         default=8,
@@ -1018,55 +1023,53 @@ if __name__ == '__main__':
         sys.exit(
             "The pLDDT cutoff has been set too high (pLDDT values range from 0 to 100). Please use a number less than 100 ")
 
-    if len(args.input) < 1:
-        sys.exit("No folders to analyze were provided");
-
     #remove any invalid amino acid chracters and ensure they are all converted to uppercase
     args.aas = re.sub(r'[^ACDEFGHIKLMNPQRSTVWY]', '', args.aas.upper())
 
     #loop through all the folders specified in the input
-    output_folders = []
-    for folder in args.input:
 
-        if not os.path.isdir(folder):
-            print(f"ERROR {folder} does not appear to be a non valid folder, skipping")
-            continue
+    folder = args.pred_folder
+    # for folder in args.input:
 
-        print(f"Starting to analyze folder ({folder})")
-        output_folder = analyze_folder(folder, args.name_filter, args.distance, args.plddt, args.pae, args.pae_mode,
-                                       args.aas, args.ignore_pae)
-        if output_folder:
-            output_folders.append(output_folder)
-        print(f"Finished analyzing folder ({folder})")
-        print(" " * 80)
-        print("*" * 80)
-        print("*" * 80)
-        print(" " * 80)
+    if not os.path.isdir(folder):
+        print(f"ERROR {folder} does not appear to be a non valid folder, skipping")
+        continue
 
-    if len(output_folders) > 1 and args.combine_all:
+    print(f"Starting to analyze folder ({folder})")
+    output_folder = analyze_folder(folder, args.name_filter, args.distance, args.plddt, args.pae, args.pae_mode,
+                                   args.aas, args.ignore_pae)
+    # if output_folder:
+    #     output_folders.append(output_folder)
+    print(f"Finished analyzing predictions ({folder})")
+    print(" " * 80)
+    print("*" * 80)
+    print("*" * 80)
+    print(" " * 80)
 
-        combined_output_folder = 'af_multimer_contact_analysis'
-        index = 1
-        while os.path.isdir(combined_output_folder):
-            #if we find existing folders with the output folder name we will iterate over index until we find an unused folder name
-            combined_output_folder = "af_multimer_contact_analysis_" + str(index)
-            index += 1
+    # if len(output_folders) > 1 and args.combine_all:
+    #
+    #     combined_output_folder = 'af_multimer_contact_analysis'
+    #     index = 1
+    #     while os.path.isdir(combined_output_folder):
+    #         #if we find existing folders with the output folder name we will iterate over index until we find an unused folder name
+    #         combined_output_folder = "af_multimer_contact_analysis_" + str(index)
+    #         index += 1
+    #
+    #     os.mkdir(combined_output_folder)
+    #
+    #     for name in ['summary', 'interfaces', 'contacts']:
+    #
+    #         csv_files = []
+    #         for folder in output_folders:
+    #             csv_files.append(os.path.join(folder, name + '.csv'))
+    #
+    #         sort_col = None
+    #         if name == 'summary':
+    #             sort_col = 'avg_n_models'
+    #
+    #         join_csv_files(csv_files, os.path.join(combined_output_folder, name + '.csv'), sort_col=sort_col)
+    #
+    #     for folder in output_folders:
+    #         shutil.rmtree(folder)
 
-        os.mkdir(combined_output_folder)
-
-        for name in ['summary', 'interfaces', 'contacts']:
-
-            csv_files = []
-            for folder in output_folders:
-                csv_files.append(os.path.join(folder, name + '.csv'))
-
-            sort_col = None
-            if name == 'summary':
-                sort_col = 'avg_n_models'
-
-            join_csv_files(csv_files, os.path.join(combined_output_folder, name + '.csv'), sort_col=sort_col)
-
-        for folder in output_folders:
-            shutil.rmtree(folder)
-
-    print(f"Finished analyzing all specified folders")
+    # print(f"Finished analyzing all specified folders")
