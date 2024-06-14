@@ -1033,7 +1033,7 @@ if __name__ == '__main__':
 
     if not os.path.isdir(folder):
         print(f"ERROR {folder} does not appear to be a non valid folder, skipping")
-        continue
+        exit(1)
 
     print(f"Starting to analyze folder ({folder})")
     output_folder = analyze_folder(folder, args.name_filter, args.distance, args.plddt, args.pae, args.pae_mode,
