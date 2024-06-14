@@ -665,7 +665,13 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
     for index, cname in enumerate(complexes):
 
         # read folder name and extract prot names with _ split
-        complex_name = os.path.basename(input_folder)
+        complex_name_tmp = os.path.basename(input_folder)
+        if complex_name_tmp == "predictions":
+            # openfold prediction
+            complex_name = os.path.dirname(os.path.dirname(input_folder))
+        else:
+            # colabfold prediction
+            complex_name = complex_name_tmp
 
         print(f"Analyzing {index + 1} / {len(complexes)}: {complex_name}")
 
