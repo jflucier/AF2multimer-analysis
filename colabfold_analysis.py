@@ -959,10 +959,12 @@ def analyze_folder(data_folder: str, name_filter: str, max_distance: float, pldd
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument(
-        "pred_folder",
+        "--pred_folder",
         default="",
         help="folders with PDB files and pAE JSON files output by Colabfold. Note that '.done.txt' marker files produced by Colabfold are used to find the names of complexes to analyze.",
-        required=True )
+        type=str,
+        required=True
+    )
     parser.add_argument(
         "--distance",
         default=8,
