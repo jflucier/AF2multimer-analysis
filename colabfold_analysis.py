@@ -964,11 +964,6 @@ if __name__ == '__main__':
         help="folders with PDB files and pAE JSON files output by Colabfold. Note that '.done.txt' marker files produced by Colabfold are used to find the names of complexes to analyze.",
         required=True )
     parser.add_argument(
-        "--fasta",
-        default="",
-        help="fasta file used for fold",
-        required=True )
-    parser.add_argument(
         "--distance",
         default=8,
         help="Maximum distance in Angstroms that any two atoms in two residues in different chains can have for them be considered in contact for the analysis. Default is 8 Angstroms.",
