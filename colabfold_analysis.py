@@ -714,7 +714,7 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
             model_num = get_af_model_num(pdb_filename)
             print(f"-> map chain labels found in pdb to protein names for model {model_num}")
             chain_list = get_chain_list_names(pdb_filename)
-            chain_list_lbl = complex_name.split("_")
+            chain_list_lbl = complex_name.split("-")
             print(f"-> retrieving contacts for model {model_num}")
             contacts = get_contacts(pdb_filename, pae_filename, max_distance, min_plddt, max_pae, pae_mode, valid_aas)
             interface_contacts[model_num] = contacts
