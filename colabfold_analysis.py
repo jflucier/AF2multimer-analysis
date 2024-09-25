@@ -823,8 +823,7 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
         print("Finished analyzing " + complex_name)
 
     if len(summary_stats) < 1:
-        print("Was not able to generate any summary statistics")
-        return
+        raise Exception("Was not able to generate any summary statistics")
 
     # output all the calculated values as CSV files into the specifed output folder (indexed by CPU to avoid
     # different threads overwriting each other)
@@ -897,9 +896,8 @@ def analyze_folder(data_folder: str, name_filter: str, max_distance: float, pldd
         complex_names = list(filter(lambda x: name_filter in x, complex_names))
 
     if len(complex_names) < 1:
-        print(
+        raise Exception(
             "ERROR: No complexes to analyze found. Please ensure all finished complexes/predictions you would like analyzed have a .done.txt file")
-        return None
 
     print(f"Found {len(complex_names)} complexes to analyze in folder: {data_folder}")
 
