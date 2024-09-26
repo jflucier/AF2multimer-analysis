@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 from argparse import ArgumentParser
+import itertools
+import argparse
 import glob
 import multiprocessing as mp
 import os
@@ -14,6 +16,8 @@ import pandas as pd
 import sys
 import shutil
 from collections import defaultdict
+
+
 
 #dict for converting 3 letter amino acid code to 1 letter code
 aa_3c_to_1c = {
@@ -641,8 +645,14 @@ def summarize_interface_statistics(interfaces: dict) -> dict:
     return summary_stats
 
 
-def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, complexes: list, max_distance: float,
-                      min_plddt: float, max_pae: float, pae_mode: str, valid_aas: str = '', ignore_pae: bool = False):
+def analyze_multimer(
+        input_folder: str,
+        output_folder: str,
+        multimer_name: str,
+        fasta: str,
+        max_distance: float,
+        min_plddt: float, max_pae: float, pae_mode: str, valid_aas: str = '', ignore_pae: bool = False
+):
     """
         Analyze protein complexes in PDB format.
 
@@ -662,165 +672,134 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
     all_interface_stats = []
     all_contacts = []
 
-    for index, cname in enumerate(complexes):
+    print(f"Analyzing {multimer_name}")
 
-        # read folder name and extract prot names with _ split
-        complex_name_tmp = os.path.basename(input_folder)
-        if complex_name_tmp == "predictions":
-            # openfold prediction
-            complex_name = os.path.dirname(os.path.dirname(input_folder))
+    interface_contacts = {}
+    #record which interface has the best score (ie the most high confidence contacts so we can report it out later)
+    best_interface_stats = None
+
+    paes_and_pdbs = [
+        f for f in glob.glob(os.path.join(input_folder, '*.pdb')) + glob.glob(os.path.join(input_folder, '*.json'))
+        if not f.endswith("timings.json")
+    ]
+
+    print(f"\n".join(paes_and_pdbs))
+
+    def combine_pdbs_and_paes_into_2_tuples():
+        def k(path):
+            return os.path.basename(path).split('.')[0]
+        for _, t in itertools.groupby(sorted(paes_and_pdbs, key=k), key=k):
+
+            def json_first(path):
+                if path.endswith(".json"):
+                    return 0
+                else:
+                    return 1
+
+            pae_file, pdb_file = list(sorted(t, key=json_first))
+
+            yield pdb_file, pae_file
+
+    def lbls_from_fasta():
+        with open(str(fasta), 'r') as f:
+            for line in f.readlines():
+                if line.startswith(">"):
+                    yield line[1:].strip()
+
+    for pdb_filename, pae_filename in combine_pdbs_and_paes_into_2_tuples():
+
+        model_num = get_af_model_num(pdb_filename)
+        print(f"-> map chain labels found in pdb to protein names for model {model_num}")
+        chain_list = get_chain_list_names(pdb_filename)
+
+        chain_list_lbl = list(lbls_from_fasta())
+
+        print(f"chain list: {chain_list}")
+        print(f"chain list lbl: {chain_list_lbl}")
+        print(f"-> retrieving contacts for model {model_num}")
+        contacts = get_contacts(pdb_filename, pae_filename, max_distance, min_plddt, max_pae, pae_mode, valid_aas)
+        interface_contacts[model_num] = contacts
+
+        for interchain_str, interchain_interfaces in contacts.items():
+            for contact_id, c in interchain_interfaces.items():
+                all_contacts.append({
+                    "complex_name": multimer_name,
+                    "model_num": model_num,
+                    "aa1_chain": c['chains'][0],
+                    "aa1_index": c['inchain_indices'][0],
+                    "aa1_type": c['types'][0],
+                    "aa1_plddt": round(c['plddts'][0]),
+                    "aa2_chain": c['chains'][1],
+                    "aa2_index": c['inchain_indices'][1],
+                    "aa2_type": c['types'][1],
+                    "aa2_plddt": round(c['plddts'][1]),
+                    "pae": c['pae'],
+                    "min_distance": c['distance'],
+                })
+
+        model_total_pdockq = 0
+        model_total_plddt = 0
+        model_total_pae = 0
+
+        if_stats = {}
+        for i in range(0, len(chain_list)):
+            chain1 = chain_list[i]
+            chain1_lbl = chain_list_lbl[i]
+            i2_start = i + 1
+
+            for i2 in range(i2_start, len(chain_list)):
+
+                chain2 = chain_list[i2]
+
+                chain2_lbl = chain_list_lbl[i2]
+                chain_idx = f"{chain1}:{chain2}"
+                chain_lbl = f"{chain1_lbl}:{chain2_lbl}"
+                print(f"-> calculating interface statistics for proteins {chain_lbl} in model {model_num}")
+                if_stats_lbl = calculate_interface_statistics(chain_idx, chain_lbl, contacts)
+
+                if if_stats_lbl[f'num_contacts_{chain_lbl}'] > 0:
+                    print(f"-> contacts found for {chain_lbl}!")
+                    if_stats_lbl[f'pdockq_{chain_lbl}'] = round(get_pdockq_elofsson(pdb_filename, chain_idx.split(":")), 3)
+                else:
+                    print(f"-> no contacts found for {chain_lbl}!")
+                    if_stats_lbl[f'pdockq_{chain_lbl}'] = 0
+
+                model_total_pdockq = model_total_pdockq + if_stats_lbl[f'pdockq_{chain_lbl}']
+                model_total_plddt = model_total_plddt + if_stats_lbl[f'plddt_{chain_lbl}'][1]
+                model_total_pae = model_total_pae + if_stats_lbl[f'pae_{chain_lbl}'][1]
+                if_stats.update(if_stats_lbl)
+
+        model_all_avg_pdockq = model_total_pdockq / len(chain_list)
+        if_stats['model_all_avg_pdockq'] = model_all_avg_pdockq
+        if_stats['model_all_avg_plddt'] = model_total_plddt / len(chain_list)
+        if_stats['model_all_avg_pae'] = model_total_pae / len(chain_list)
+        # add pdockq for best interface
+        if best_interface_stats is None:
+            best_interface_stats = if_stats
+            best_interface_stats['model_num'] = model_num
         else:
-            # colabfold prediction
-            complex_name = complex_name_tmp
-
-        print(f"Analyzing {index + 1} / {len(complexes)}: {complex_name}")
-
-        print("-> get PDB files ending in .pdb or .pdb")
-        pdb_filepaths = get_filepaths_for_complex(input_folder, cname, '*.pdb') + get_filepaths_for_complex(
-            input_folder, cname, "*.pdb.??")
-        if len(pdb_filepaths) < 1:
-            print(f"ERROR: No PDB files found for {cname}")
-            print("SKIPPING: " + cname)
-            continue
-
-        print("-> get PAE files ending in .json")
-        pae_filepaths = []
-        if ignore_pae == False:
-            #get pAE files ending in .json or .json followed by two letters as would be the case for compressed gzipped files
-            pae_filepaths = get_filepaths_for_complex(input_folder, cname, '*.json') + get_filepaths_for_complex(
-                input_folder, cname, "*.json.??")
-
-            if len(pdb_filepaths) != len(pae_filepaths):
-                print(
-                    f"ERROR: Number of PDB files ({len(pdb_filepaths)}) does not match number of PAE files ({len(pae_filepaths)})")
-                print("SKIPPING: " + complex_name)
-                continue
-
-        print("-> sort the files by model number so that they are aligned for analysis ie PDB model 1 = PAE model 1")
-        pdb_filepaths.sort(key=get_af_model_num)
-        if ignore_pae == False:
-            pae_filepaths.sort(key=get_af_model_num)
-        else:
-            for f in pdb_filepaths:
-                pae_filepaths.append('')
-
-
-        interface_contacts = {}
-        #record which interface has the best score (ie the most high confidence contacts so we can report it out later)
-        best_interface_stats = None
-
-        for pdb_filename, pae_filename in zip(pdb_filepaths, pae_filepaths):
-
-            model_num = get_af_model_num(pdb_filename)
-            print(f"-> map chain labels found in pdb to protein names for model {model_num}")
-            chain_list = get_chain_list_names(pdb_filename)
-            chain_list_lbl = complex_name.split("-")
-            print(f"-> retrieving contacts for model {model_num}")
-            contacts = get_contacts(pdb_filename, pae_filename, max_distance, min_plddt, max_pae, pae_mode, valid_aas)
-            interface_contacts[model_num] = contacts
-
-            for interchain_str, interchain_interfaces in contacts.items():
-                for contact_id, c in interchain_interfaces.items():
-                    all_contacts.append({
-                        "complex_name": complex_name,
-                        "model_num": model_num,
-                        "aa1_chain": c['chains'][0],
-                        "aa1_index": c['inchain_indices'][0],
-                        "aa1_type": c['types'][0],
-                        "aa1_plddt": round(c['plddts'][0]),
-                        "aa2_chain": c['chains'][1],
-                        "aa2_index": c['inchain_indices'][1],
-                        "aa2_type": c['types'][1],
-                        "aa2_plddt": round(c['plddts'][1]),
-                        "pae": c['pae'],
-                        "min_distance": c['distance'],
-                    })
-
-            model_total_pdockq = 0
-            model_total_plddt = 0
-            model_total_pae = 0
-
-            if_stats = {}
-            for i in range(0, len(chain_list)):
-                chain1 = chain_list[i]
-                chain1_lbl = chain_list_lbl[i]
-                i2_start = i + 1
-
-                for i2 in range(i2_start, len(chain_list)):
-                    chain2 = chain_list[i2]
-                    chain2_lbl = chain_list_lbl[i2]
-                    chain_idx = f"{chain1}:{chain2}"
-                    chain_lbl = f"{chain1_lbl}:{chain2_lbl}"
-                    print(f"-> calculating interface statistics for proteins {chain_lbl} in model {model_num}")
-                    if_stats_lbl = calculate_interface_statistics(chain_idx, chain_lbl, contacts)
-                    #returned
-                    # data = {f'num_contacts_{interchain_id}': num_contacts,
-                    #         f'plddt_{interchain_id}': [plddt_min, plddt_avg, plddt_max],
-                    #         f'pae_{interchain_id}': [pae_min, pae_avg, pae_max],
-                    #         f'distance_avg_{interchain_id}': distance_avg}
-
-                    if if_stats_lbl[f'num_contacts_{chain_lbl}'] > 0:
-                        #     for i in range(0, len(chain_list)):
-                        #         chain1 = chain_list[i]
-                        #         i2_start = i + 1
-                        #         for i2 in range(i2_start, len(chain_list)):
-                        #             chain2 = chain_list[i2]
-                        #             chain_lbl = f"{chain1}:{chain2}"
-                        print(f"-> contacts found for {chain_lbl}!")
-                        if_stats_lbl[f'pdockq_{chain_lbl}'] = round(get_pdockq_elofsson(pdb_filename, chain_idx.split(":")), 3)
-                    else:
-                        print(f"-> no contacts found for {chain_lbl}!")
-                        if_stats_lbl[f'pdockq_{chain_lbl}'] = 0
-
-                    model_total_pdockq = model_total_pdockq + if_stats_lbl[f'pdockq_{chain_lbl}']
-                    model_total_plddt = model_total_plddt + if_stats_lbl[f'plddt_{chain_lbl}'][1]
-                    model_total_pae = model_total_pae + if_stats_lbl[f'pae_{chain_lbl}'][1]
-                    if_stats.update(if_stats_lbl)
-
-            model_all_avg_pdockq = model_total_pdockq / len(chain_list)
-            if_stats['model_all_avg_pdockq'] = model_all_avg_pdockq
-            if_stats['model_all_avg_plddt'] = model_total_plddt / len(chain_list)
-            if_stats['model_all_avg_pae'] = model_total_pae / len(chain_list)
-            # add pdockq for best interface
-            if best_interface_stats is None:
+            if model_total_pdockq > best_interface_stats['model_all_avg_pdockq']:
                 best_interface_stats = if_stats
                 best_interface_stats['model_num'] = model_num
-            else:
-                if model_total_pdockq > best_interface_stats['model_all_avg_pdockq']:
-                    best_interface_stats = if_stats
-                    best_interface_stats['model_num'] = model_num
 
-            all_interface_data_stats = {
-                "complex_name": complex_name,
-                "model_num": model_num
-            }
+        all_interface_data_stats = {
+            "complex_name": multimer_name,
+            "model_num": model_num
+        }
 
-            all_interface_data_stats.update(if_stats)
-            all_interface_stats.append(all_interface_data_stats)
-            # all_interface_stats.append({
-            #     "complex_name": cname,
-            #     "model_num": model_num,
-            #     "pdockq": if_stats['pdockq'],
-            #     "ncontacts": if_stats['num_contacts'],
-            #     "plddt_min": round(if_stats['plddt'][0]),
-            #     "plddt_avg": round(if_stats['plddt'][1]),
-            #     "plddt_max": round(if_stats['plddt'][2]),
-            #     "pae_min": round(if_stats['pae'][0]),
-            #     "pae_avg": round(if_stats['pae'][1]),
-            #     "pae_max": round(if_stats['pae'][2]),
-            #     "distance_avg": if_stats['distance_avg'],
-            # })
+        all_interface_data_stats.update(if_stats)
+        all_interface_stats.append(all_interface_data_stats)
 
-        print(f"-> Model {best_interface_stats['model_num']} is the best model")
-        print(f"-> Generating interface summary of all models")
-        stats = summarize_interface_statistics(interface_contacts)
-        stats['best_model_num'] = best_interface_stats['model_num']
-        stats['best_avg_pdockq'] = best_interface_stats['model_all_avg_pdockq']
-        stats['best_avg_plddt'] = best_interface_stats['model_all_avg_plddt']
-        stats['best_avg_pae'] = best_interface_stats['model_all_avg_pae']
-        summary_stats[complex_name] = stats
+    print(f"-> Model {best_interface_stats['model_num']} is the best model")
+    print(f"-> Generating interface summary of all models")
+    stats = summarize_interface_statistics(interface_contacts)
+    stats['best_model_num'] = best_interface_stats['model_num']
+    stats['best_avg_pdockq'] = best_interface_stats['model_all_avg_pdockq']
+    stats['best_avg_plddt'] = best_interface_stats['model_all_avg_plddt']
+    stats['best_avg_pae'] = best_interface_stats['model_all_avg_pae']
+    summary_stats[multimer_name] = stats
 
-        print("Finished analyzing " + complex_name)
+    print("Finished analyzing " + multimer_name)
 
     if len(summary_stats) < 1:
         raise Exception("Was not able to generate any summary statistics")
@@ -840,15 +819,15 @@ def analyze_complexes(cpu_index: int, input_folder: str, output_folder: str, com
                                                  'best_avg_pae'])
 
     summary_df.index.name = 'complex_name'
-    summary_df.to_csv(os.path.join(output_folder, f"summary_cpu{cpu_index}.csv"))
+    summary_df.to_csv(os.path.join(output_folder, f"summary.csv"))
 
     interfaces_df = pd.DataFrame(all_interface_stats)
-    interfaces_df.to_csv(os.path.join(output_folder, f"interfaces_cpu{cpu_index}.csv"), index=None)
+    interfaces_df.to_csv(os.path.join(output_folder, f"interfaces.csv"), index=None)
 
     # there are cases when no contacts may be detected where we don't want to output anything
     if len(all_contacts) > 0:
         contacts_df = pd.DataFrame(all_contacts)
-        contacts_df.to_csv(os.path.join(output_folder, f"contacts_cpu{cpu_index}.csv"), index=None)
+        contacts_df.to_csv(os.path.join(output_folder, f"contacts.csv"), index=None)
 
 
 def get_chain_list_names(pdb_filename):
@@ -870,103 +849,33 @@ def get_chain_list_names(pdb_filename):
     return chains
 
 
-def analysis_thread_did_finish(arg1):
-    return
-
-
-def analyze_folder(data_folder: str, name_filter: str, max_distance: float, plddt_cutoff: float, pae_cutoff: float,
-                   pae_mode: str, valid_aas: str = '', ignore_pae: bool = False) -> str:
-    """
-        Analyze a folder containing protein structures in PDB format.
-
-        :param data_folder (str): The path to the folder containing PDB and pAE JSON files to be analyzed.
-        :param name_filter (str): String that can be used to filter complexes by name. Only complexes with names containing the filter string will be analyzed.
-        :param max_distance (float): The maximum distance between two atoms for them to be considered in contact.
-        :param plddt_cutoff (float): The minimum pLDDT score required for a residue to be considered "well-modeled".
-        :param pae_cutoff (float): The maximum predicted atomic error allowed for a residue to be considered "well-modeled".
-        :param pae_mode (str): The method to use for calculating predicted atomic error (PAE). Possible values are "min" or "avg".
-        :param valid_aas (str): A string representing the set of amino acids have both residues in a pair have to belong to in order for that pair to be a contact. 
-        :param ignore_pae (bool): A boolean that allows to analyze complexes purely based on PDB files and ignores any PAE analysis. 
-    """
-
-    data_folder = data_folder.rstrip('/')
-    complex_names = get_finished_complexes(data_folder)
-    if len(name_filter) > 0:
-        #keep only complex names that contain the name filter string
-        complex_names = list(filter(lambda x: name_filter in x, complex_names))
-
-    if len(complex_names) < 1:
-        raise Exception(
-            "ERROR: No complexes to analyze found. Please ensure all finished complexes/predictions you would like analyzed have a .done.txt file")
-
-    print(f"Found {len(complex_names)} complexes to analyze in folder: {data_folder}")
-
-    output_folder = f"{data_folder}/{os.path.basename(data_folder)}_analysis"
-    # index = 1
-    # while os.path.isdir(output_folder):
-    #     #if we find existing folders with the output folder name we will iterate over index until we find an unused folder name
-    #     output_folder = os.path.basename(data_folder) + "_analysis_" + str(index)
-    #     index += 1
-
-    #guaranteed to have a new unique output_folder name, lets make it
-    if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
-    else:
-        print(f"Reusing directory {output_folder}")
-
-    # find how many CPUs the system has and use as many as possible to speed up the analysis time
-    num_cpus_to_use = mp.cpu_count()
-    num_cpus_to_use = min(num_cpus_to_use, len(complex_names))
-    print(f"Splitting analysis job across {num_cpus_to_use} different CPUs")
-    pool = mp.Pool(num_cpus_to_use)
-
-    # take the list of complexes and divide it across as many CPUs as we found
-    complex_name_lists = distribute(complex_names, num_cpus_to_use)
-
-    # traces = []
-    # for cpu_index in range(0, num_cpus_to_use):
-    #     #create a new thread to analyze the complexes (1 thread per CPU)
-    #     traces.append(pool.apply_async(analyze_complexes,
-    #                                    args=(cpu_index, data_folder, output_folder, complex_name_lists[cpu_index], max_distance, plddt_cutoff, pae_cutoff, pae_mode, valid_aas, ignore_pae),
-    #                                    callback=analysis_thread_did_finish))
-    #
-    # for t in traces:
-    #     t.get()
-    #
-    # pool.close()
-    # pool.join()
-    analyze_complexes(0, data_folder, output_folder, complex_name_lists[0], max_distance, plddt_cutoff, pae_cutoff,
-                      pae_mode, valid_aas, ignore_pae)
-
-    #merge all the seperate files produced by the independently running CPU threads
-    for name in ['summary', 'interfaces', 'contacts']:
-
-        files = glob.glob(os.path.join(output_folder, name + '_cpu*.csv'))
-        if (len(files) < 1):
-            # no files to join, skip
-            continue
-
-        sort_col = None
-        if name == 'summary':
-            #sort summary files by average num models descending as a default to bring top/most confident hits to the top
-            sort_col = 'avg_n_models'
-
-        print(f"Combining all {name} files into one")
-        join_csv_files(files, os.path.join(output_folder, name + '.csv'), sort_col=sort_col)
-
-        #delete all the non-merged files produced by all the seperate CPU threads
-        [os.remove(f) for f in files]
-
-    return output_folder
-
-
-if __name__ == '__main__':
+def run(args=None):
     parser = ArgumentParser()
     parser.add_argument(
         "--pred_folder",
         default="",
         help="folders with PDB files and pAE JSON files output by Colabfold. Note that '.done.txt' marker files produced by Colabfold are used to find the names of complexes to analyze.",
+        type=dir_path,
+        required=True
+    )
+    parser.add_argument(
+        "--out_folder",
+        default="",
+        help="output folder",
+        type=dir_path,
+        required=True
+    )
+    parser.add_argument(
+        "--multimer_name",
+        default="",
+        help="output folder",
         type=str,
+        required=True
+    )
+    parser.add_argument(
+        "--fasta",
+        help="Fasta containing the proteins in the multimer",
+        type=file_path,
         required=True
     )
     parser.add_argument(
@@ -996,11 +905,6 @@ if __name__ == '__main__':
         help="A string representing what amino acids contacts to look/filter for. Allows you to limit what contacts to include in the analysis. By default is blank meaning all amino acids. A value of K would be for any lysine lysine pairs. KR would be RR, KR, RK, or RR pairs, etc",
         type=str)
     parser.add_argument(
-        "--name-filter",
-        default='',
-        help="An optional string that allows one to only analyze complexes that contain that string in their name",
-        type=str, )
-    parser.add_argument(
         '--combine-all',
         help="Combine the analysis from multiple folders specified by the input argument",
         action='store_true')
@@ -1009,7 +913,7 @@ if __name__ == '__main__':
         help="Ignore PAE values and just analyze the PDB files. Overides any other PAE settings.",
         action='store_true')
 
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     if (args.distance < 1):
         sys.exit("The distance cutoff has been set too low. Please use a number greater than 1 Angstrom")
@@ -1027,50 +931,48 @@ if __name__ == '__main__':
     #remove any invalid amino acid chracters and ensure they are all converted to uppercase
     args.aas = re.sub(r'[^ACDEFGHIKLMNPQRSTVWY]', '', args.aas.upper())
 
-    #loop through all the folders specified in the input
 
-    folder = args.pred_folder
-    # for folder in args.input:
+    if not os.path.isdir(args.pred_folder):
+        raise Exception(f"{args.pred_folder} is not a folder")
 
-    if not os.path.isdir(folder):
-        print(f"ERROR {folder} does not appear to be a non valid folder, skipping")
-        exit(1)
+    analyze_multimer(
+        args.pred_folder,
+        args.out_folder,
+        args.multimer_name,
+        args.fasta,
+        args.distance,
+        args.plddt,
+        args.pae,
+        args.pae_mode,
+        args.aas,
+        args.ignore_pae
+    )
 
-    print(f"Starting to analyze folder ({folder})")
-    output_folder = analyze_folder(folder, args.name_filter, args.distance, args.plddt, args.pae, args.pae_mode,
-                                   args.aas, args.ignore_pae)
-    # if output_folder:
-    #     output_folders.append(output_folder)
-    print(f"Finished analyzing predictions ({folder})")
-    print(" " * 80)
-    print("*" * 80)
-    print("*" * 80)
-    print(" " * 80)
+def dir_path(path):
+    if os.path.exists(path):
+        if not os.path.isdir(path):
+            raise argparse.ArgumentTypeError(f"path {path} is not a directory")
+        return path
+    else:
+        raise argparse.ArgumentTypeError(f"path {path} does not exist")
 
-    # if len(output_folders) > 1 and args.combine_all:
-    #
-    #     combined_output_folder = 'af_multimer_contact_analysis'
-    #     index = 1
-    #     while os.path.isdir(combined_output_folder):
-    #         #if we find existing folders with the output folder name we will iterate over index until we find an unused folder name
-    #         combined_output_folder = "af_multimer_contact_analysis_" + str(index)
-    #         index += 1
-    #
-    #     os.mkdir(combined_output_folder)
-    #
-    #     for name in ['summary', 'interfaces', 'contacts']:
-    #
-    #         csv_files = []
-    #         for folder in output_folders:
-    #             csv_files.append(os.path.join(folder, name + '.csv'))
-    #
-    #         sort_col = None
-    #         if name == 'summary':
-    #             sort_col = 'avg_n_models'
-    #
-    #         join_csv_files(csv_files, os.path.join(combined_output_folder, name + '.csv'), sort_col=sort_col)
-    #
-    #     for folder in output_folders:
-    #         shutil.rmtree(folder)
+def file_path(path):
+    if os.path.exists(path):
+        if not os.path.isfile(path):
+            raise argparse.ArgumentTypeError(f"path {path} is not a file")
+        return path
+    else:
+        raise argparse.ArgumentTypeError(f"path {path} does not exist")
 
-    # print(f"Finished analyzing all specified folders")
+
+def test():
+    run([
+        "--pred_folder", "/home/maxl/dev/Marechal_pipelines/ti/tiny-openfold/output/of-fold.RFWD3_PIP_3-PCNA_3/predictions",
+        "--out_folder", "/home/maxl/dev/Marechal_pipelines/ti/tiny-openfold/output/of-fold.RFWD3_PIP_3-PCNA_3",
+        "--fasta", "/home/maxl/dev/Marechal_pipelines/ti/tiny-openfold/output/of-align.RFWD3_PIP_3-PCNA_3/RFWD3_PIP_1-RFWD3_PIP_2-RFWD3_PIP_3-PCNA_1-PCNA_2-PCNA_3.fa",
+        "--multimer_name", "RFWD3_PIP_1-RFWD3_PIP_2-RFWD3_PIP_3-PCNA_1-PCNA_2-PCNA_3"
+    ])
+
+if __name__ == '__main__':
+
+    run()
