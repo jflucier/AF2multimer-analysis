@@ -687,18 +687,26 @@ def analyze_multimer(
 
     def combine_pdbs_and_paes_into_2_tuples():
         def k(path):
-            return os.path.basename(path).split('.')[0]
-        for _, t in itertools.groupby(sorted(paes_and_pdbs, key=k), key=k):
+            # Remove keywords that differ between PDBs and JSONs to find the common rank ID
+            base = os.path.basename(path).replace("_relaxed", "").replace("_scores", "")
+            return base.split('.')[0]
 
-            def json_first(path):
-                if path.endswith(".json"):
-                    return 0
-                else:
-                    return 1
+        # Sort files by the modified key so groupby works correctly
+        sorted_files = sorted(paes_and_pdbs, key=k)
 
-            pae_file, pdb_file = list(sorted(t, key=json_first))
+        for rank_key, t in itertools.groupby(sorted_files, key=k):
+            file_group = list(t)
 
-            yield pdb_file, pae_file
+            # Only proceed if we found exactly one PDB and one JSON for this rank
+            if len(file_group) == 2:
+                def json_first(path):
+                    return 0 if path.endswith(".json") else 1
+
+                pae_file, pdb_file = sorted(file_group, key=json_first)
+                yield pdb_file, pae_file
+            else:
+                # Helpful for debugging which file is missing its partner
+                print(f"-> Warning: Group {rank_key} has {len(file_group)} file(s). Expected 2. Skipping.")
 
     ### parch for colabfold
     # def lbls_from_fasta():
