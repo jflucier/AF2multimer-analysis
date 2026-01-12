@@ -700,11 +700,33 @@ def analyze_multimer(
 
             yield pdb_file, pae_file
 
-    def lbls_from_fasta():
-        with open(str(fasta), 'r') as f:
-            for line in f.readlines():
+    ### parch for colabfold
+    # def lbls_from_fasta():
+    #     with open(str(fasta), 'r') as f:
+    #         for line in f.readlines():
+    #             if line.startswith(">"):
+    #                 yield line[1:].strip()
+    def lbls_from_fasta(fasta_path):
+        """
+        Parses a ColabFold multimer FASTA and returns a list of labels
+        corresponding to each sequence separated by colons.
+        """
+        labels = []
+        with open(fasta_path, 'r') as f:
+            current_label = "Unknown"
+            for line in f:
+                line = line.strip()
+                if not line: continue
                 if line.startswith(">"):
-                    yield line[1:].strip()
+                    current_label = line[1:]
+                else:
+                    # Count sequences separated by colons
+                    num_chains = len(line.split(':'))
+                    # Create a label for every chain (e.g., "traG_6_EexC_1_1", "traG_6_EexC_1_2")
+                    for i in range(1, num_chains + 1):
+                        labels.append(f"{current_label}_{i}")
+        return labels
+
 
     for pdb_filename, pae_filename in combine_pdbs_and_paes_into_2_tuples():
 
