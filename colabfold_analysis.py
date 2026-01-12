@@ -742,7 +742,7 @@ def analyze_multimer(
         print(f"-> map chain labels found in pdb to protein names for model {model_num}")
         chain_list = get_chain_list_names(pdb_filename)
 
-        chain_list_lbl = list(lbls_from_fasta())
+        chain_list_lbl = list(lbls_from_fasta(fasta))
 
         print(f"chain list: {chain_list}")
         print(f"chain list lbl: {chain_list_lbl}")
