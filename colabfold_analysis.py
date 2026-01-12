@@ -680,7 +680,7 @@ def analyze_multimer(
 
     paes_and_pdbs = [
         f for f in glob.glob(os.path.join(input_folder, '*.pdb')) + glob.glob(os.path.join(input_folder, '*.json'))
-        if not f.endswith("timings.json")
+        if not any(x in f for x in ["timings.json", "config.json", "cite.json"])
     ]
 
     print(f"\n".join(paes_and_pdbs))
