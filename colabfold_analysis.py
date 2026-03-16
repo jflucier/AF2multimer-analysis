@@ -16,6 +16,9 @@ import pandas as pd
 import sys
 import shutil
 from collections import defaultdict
+from sklearn.cluster import DBSCAN
+import numpy as np
+
 
 
 
@@ -534,6 +537,101 @@ def get_contacts(pdb_filename: str, pae_filename: str, max_distance: float, min_
     return filtered_contacts
 
 
+def get_patches(pdb_filename, filtered_contacts, eps=10.0):
+    def compress_range(indices):
+        ranges = []
+        sorted_indices = sorted(list(set(indices)))
+        for _, g in itertools.groupby(enumerate(sorted_indices), lambda x: x[1] - x[0]):
+            group = list(g)
+            start, end = group[0][1], group[-1][1]
+            ranges.append(f"{start}-{end}" if start != end else f"{start}")
+        return ",".join(ranges)
+
+    # 1. Extract coordinates (Nitrogen proxy)
+    coord_map = {}
+    with open(pdb_filename, 'r') as f:
+        for line in f:
+            if line.startswith('ATOM') and line[13:16].strip() == 'N':
+                chain = line[21:22].strip()
+                res_seq = int(line[22:26])
+                coord_map[(chain, res_seq)] = np.array([float(line[30:38]), float(line[38:46]), float(line[46:54])])
+
+    all_patches_data = []
+    colors = ["red", "blue", "green", "yellow", "magenta", "cyan", "orange", "purple", "pink", "white"]
+
+    # 2. Process interfaces
+    for chain_pair, contact_dict in filtered_contacts.items():
+        ch_ids = chain_pair.split(':')
+
+        # Look at both directions (A->B and B->A)
+        for target_chain, partner_chain in [(ch_ids[0], ch_ids[1]), (ch_ids[1], ch_ids[0])]:
+
+            res_to_partners = {}
+            res_metadata = {}
+            res_paes = {}  # Track PAEs for each target residue
+
+            for c in contact_dict.values():
+                try:
+                    t_idx = c['chains'].index(target_chain)
+                    p_idx = 1 - t_idx
+                except ValueError:
+                    continue
+
+                t_res = c['inchain_indices'][t_idx]
+                p_res = c['inchain_indices'][p_idx]
+
+                if t_res not in res_to_partners:
+                    res_to_partners[t_res] = set()
+                    res_metadata[t_res] = {'type': c['types'][t_idx], 'plddt': c['plddts'][t_idx]}
+                    res_paes[t_res] = []
+
+                res_to_partners[t_res].add(p_res)
+                res_paes[t_res].append(c['pae'])  # Collect PAE for this specific contact
+
+            if not res_to_partners: continue
+
+            sorted_t_indices = sorted(res_to_partners.keys())
+            coords = [coord_map[(target_chain, idx)] for idx in sorted_t_indices if (target_chain, idx) in coord_map]
+            valid_t_indices = [idx for idx in sorted_t_indices if (target_chain, idx) in coord_map]
+
+            if not coords: continue
+
+            # 3. Spatial Clustering
+            clustering = DBSCAN(eps=eps, min_samples=1).fit(np.array(coords))
+
+            for cluster_id in set(clustering.labels_):
+                patch_t_indices = [valid_t_indices[i] for i, lbl in enumerate(clustering.labels_) if lbl == cluster_id]
+
+                patch_p_indices = set()
+                patch_all_paes = []  # To calculate average confidence of the whole patch
+                for idx in patch_t_indices:
+                    patch_p_indices.update(res_to_partners[idx])
+                    patch_all_paes.extend(res_paes[idx])
+
+                t_range = compress_range(patch_t_indices)
+                p_range = compress_range(list(patch_p_indices))
+
+                color = colors[cluster_id % len(colors)]
+                patch_types = [res_metadata[idx]['type'] for idx in patch_t_indices]
+                avg_plddt = np.mean([res_metadata[idx]['plddt'] for idx in patch_t_indices])
+                avg_pae = np.mean(patch_all_paes) if patch_all_paes else 0.0
+
+                all_patches_data.append({
+                    "chain": target_chain,
+                    "partner_chain": partner_chain,
+                    "patch_id": f"{target_chain}_to_{partner_chain}_p{cluster_id}",
+                    "residue_count": len(patch_t_indices),
+                    "avg_plddt": round(float(avg_plddt), 2),
+                    "avg_pae": round(float(avg_pae), 2),  # Patch confidence score
+                    "residue_indices": ",".join(map(str, patch_t_indices)),
+                    "partner_residues": ",".join(map(str, sorted(list(patch_p_indices)))),
+                    "amino_acids": "".join(patch_types),
+                    "chimerax_cmd": f"color /{target_chain}:{t_range} {color}; color /{partner_chain}:{p_range} {color}"
+                })
+
+    return all_patches_data
+
+
 def calculate_interface_statistics(interchain_id, interchain_lbl, contacts: dict) -> dict:
     """
         Returns summary confidence statistics such as pAE and pLDDT values across all the contacts in an interface
@@ -671,6 +769,7 @@ def analyze_multimer(
     summary_stats = {}
     all_interface_stats = []
     all_contacts = []
+    all_patches = []
 
     print(f"Analyzing {multimer_name}")
 
@@ -767,6 +866,16 @@ def analyze_multimer(
                     "min_distance": c['distance'],
                 })
 
+        print(f"-> clustering contacts into patches for model {model_num}")
+        # eps=10.0 is a good default for spatial clustering of residues
+        model_patches = get_patches(pdb_filename, contacts, eps=max_distance)
+        for p in model_patches:
+            p.update({
+                "complex_name": multimer_name,
+                "model_num": model_num
+            })
+            all_patches.append(p)
+
         model_total_pdockq = 0
         model_total_plddt = 0
         model_total_pae = 0
@@ -837,6 +946,11 @@ def analyze_multimer(
     # output all the calculated values as CSV files into the specifed output folder (indexed by CPU to avoid
     # different threads overwriting each other)
     print(f"-> Outputting reports")
+
+    best_model_val = best_interface_stats['model_num']
+    for patch in all_patches:
+        patch['is_best_model'] = 1 if patch['model_num'] == best_model_val else 0
+
     summary_df = pd.DataFrame.from_dict(summary_stats,
                                         orient='index',
                                         columns=['avg_n_models',
@@ -858,6 +972,17 @@ def analyze_multimer(
     if len(all_contacts) > 0:
         contacts_df = pd.DataFrame(all_contacts)
         contacts_df.to_csv(os.path.join(output_folder, f"contacts.csv"), index=None)
+
+    if len(all_patches) > 0:
+        patches_df = pd.DataFrame(all_patches)
+        ordered_cols = [
+            'complex_name', 'model_num', 'is_best_model', 'chain',
+            'partner_chain', 'patch_id', 'residue_count', 'avg_plddt', 'avg_pae',
+            'residue_indices', 'partner_residues', 'amino_acids', 'chimerax_cmd'
+        ]
+        patches_df = patches_df[ordered_cols]
+        patches_df.to_csv(os.path.join(output_folder, "patches.csv"), index=None)
+        print(f"-> Generated patches.csv with {len(all_patches)} patches")
 
 
 def get_chain_list_names(pdb_filename):
